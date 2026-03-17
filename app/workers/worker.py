@@ -196,7 +196,7 @@ def enqueue_event(event_id: int) -> str:
 
 def run_worker() -> None:
     """Main entry point for running the worker."""
-    parser = argparse.ArgumentParser(description="AI Concurs Event Processor Worker")
+    parser = argparse.ArgumentParser(description="FlowFusion Event Processor Worker")
     parser.add_argument(
         "--use-rq",
         action="store_true",

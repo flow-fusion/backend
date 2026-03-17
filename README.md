@@ -1,6 +1,6 @@
-# AI Concurs Backend
+# FlowFusion
 
-Единый сервис для приёма GitLab webhook'ов, генерации AI-саммари и автоматической синхронизации с Jira.
+Единый сервис для приёма GitLab webhook'ов, генерации AI-summary и автоматической синхронизации с Jira.
 
 ## Архитектура
 
@@ -11,7 +11,7 @@
 │                    WEBHOOK LAYER                            │
 │  (app/webhooks/) — Приём и валидация HTTP-запросов          │
 │                                                             │
-│  GitLab ──► routes.py ──► WebhookService ──► DB + Queue    │
+│  GitLab ──► routes.py ──► WebhookService ──► DB + Queue     │
 └─────────────────────────────────────────────────────────────┘
                               │
                               │ queue_event()
@@ -20,7 +20,7 @@
 │                  PROCESSING LAYER                           │
 │  (app/processing/) — Асинхронная обработка событий          │
 │                                                             │
-│  Redis ──► EventProcessor ──► GitContext ──► AI Summary    │
+│  Redis ──► EventProcessor ──► GitContext ──► AI Summary     │
 └─────────────────────────────────────────────────────────────┘
                               │
                               │ ai_summaries table
@@ -29,7 +29,7 @@
 │                 JIRA INTEGRATION LAYER                      │
 │  (app/jira_integration/) — Синхронизация с Jira             │
 │                                                             │
-│  AI Summary ──► JiraClient ──► Comment + Transition        │
+│  AI Summary ──► JiraClient ──► Comment + Transition         │
 └─────────────────────────────────────────────────────────────┘
                               ▲
                               │ использует
@@ -48,7 +48,7 @@
 ## Структура проекта
 
 ```
-ai_concurs_backend/
+root/
 ├── app/
 │   ├── webhooks/              # WEBHOOK LAYER
 │   │   ├── __init__.py
@@ -109,7 +109,7 @@ ai_concurs_backend/
 ## Установка
 
 ```bash
-cd /Users/dmitriy/Documents/ai_concurs_backend
+cd /Users/dmitriy/Documents/flow-fusion
 
 # Установить зависимости
 pip install -r requirements.txt
@@ -132,7 +132,7 @@ GITLAB_WEBHOOK_SECRET=your_webhook_secret_here
 GITLAB_API_TOKEN=your_gitlab_api_token_here
 
 # Database
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ai_concurs
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/flow-fusion
 
 # Redis
 REDIS_HOST=localhost
