@@ -1,0 +1,141 @@
+version: '3.8'
+
+# =============================================================================
+# PRODUCTION MODE
+# Use this for production deployment
+# =============================================================================
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:15-alpine
+    container_name: flowfusion-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+      POSTGRES_DB: ${DB_NAME:-flowfusion}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - flowfusion-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis Queue
+  redis:
+    image: redis:7-alpine
+    container_name: flowfusion-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:-}
+    volumes:
+      - redis_data:/data
+    networks:
+      - flowfusion-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # FastAPI Webhook Server
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flowfusion-api
+    command: >
+      python -m uvicorn app.main:app
+      --host 0.0.0.0
+      --port 8000
+      --workers 4
+    ports:
+      - "8000:8000"
+    environment:
+      - DEBUG=false
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-flowfusion}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - GITLAB_WEBHOOK_SECRET=${GITLAB_WEBHOOK_SECRET:?GITLAB_WEBHOOK_SECRET is required}
+      - GITLAB_API_TOKEN=${GITLAB_API_TOKEN:?GITLAB_API_TOKEN is required}
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - JIRA_URL=${JIRA_URL:?JIRA_URL is required}
+      - JIRA_EMAIL=${JIRA_EMAIL:?JIRA_EMAIL is required}
+      - JIRA_TOKEN=${JIRA_TOKEN:?JIRA_TOKEN is required}
+      - JIRA_AUTO_POST=${JIRA_AUTO_POST:-true}
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - flowfusion-internal
+      - flowfusion-public
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # Background Worker (can scale horizontally)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: flowfusion-worker
+    command: python -m app.workers.worker --direct
+    environment:
+      - DEBUG=false
+      - DATABASE_URL=postgresql://${DB_USER:-postgres}:${DB_PASSWORD}@postgres:5432/${DB_NAME:-flowfusion}
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=${REDIS_PASSWORD:-}
+      - GITLAB_WEBHOOK_SECRET=${GITLAB_WEBHOOK_SECRET}
+      - GITLAB_API_TOKEN=${GITLAB_API_TOKEN}
+      - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
+      - JIRA_URL=${JIRA_URL}
+      - JIRA_EMAIL=${JIRA_EMAIL}
+      - JIRA_TOKEN=${JIRA_TOKEN}
+      - JIRA_AUTO_POST=${JIRA_AUTO_POST:-true}
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - flowfusion-internal
+    restart: unless-stopped
+    deploy:
+      replicas: 2  # Scale workers based on load
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+
+networks:
+  flowfusion-internal:
+    driver: bridge
+    internal: true
+  flowfusion-public:
+    driver: bridge
