@@ -3,14 +3,14 @@
 import asyncio
 from typing import Optional, Set
 from sqlalchemy.orm import Session
-from app.core.database import session_scope
-from app.core.logging_config import get_logger
+from app.shared.database import session_scope
+from app.shared.logging_config import get_logger
 from app.processing.event_queue_service import EventQueueService
 from app.processing.commit_aggregator import CommitAggregator
 from app.processing.ai_summary_builder import AISummaryBuilder
 from app.processing.git_context_service import GitContextService, GitContext
-from app.repositories.processing_repository import ProcessingRepository
-from app.models import Event
+from app.shared.processing_repository import ProcessingRepository
+from app.shared.models import Event
 
 logger = get_logger("event_processor")
 

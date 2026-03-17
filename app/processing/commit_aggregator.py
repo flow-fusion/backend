@@ -4,9 +4,9 @@ import re
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
 from collections import defaultdict
-from app.models import Commit
-from app.core.config import get_settings
-from app.core.logging_config import get_logger
+from app.shared.models import Commit
+from app.shared.config import get_settings
+from app.shared.logging_config import get_logger
 
 logger = get_logger("commit_aggregator")
 
@@ -65,38 +65,36 @@ class CommitAggregator:
     ) -> List[Commit]:
         """
         Filter out commits that have already been processed.
-        
+
         Args:
             commits: List of Commit objects to filter.
             processed_commit_hashes: Set of already processed commit hashes.
-            
+
         Returns:
             List of unprocessed Commit objects.
         """
         unprocessed = []
         for commit in commits:
-            dedup_key = f"{commit.commit_id}:{commit.branch}"
-            
-            if commit.commit_id in processed_commit_hashes:
-                logger.debug(f"Skipping already processed commit {commit.commit_id[:8]}")
+            # Get branch name from relationship or assume it's passed via jira_issue context
+            branch_name = commit.branch.name if commit.branch else "unknown"
+            dedup_key = f"{commit.commit_hash}:{branch_name}"
+
+            if commit.commit_hash in processed_commit_hashes:
+                logger.debug(f"Skipping already processed commit {commit.commit_hash[:8]}")
                 continue
-            
-            if commit.processed:
-                logger.debug(f"Skipping commit {commit.commit_id[:8]} marked as processed in DB")
-                continue
-            
+
             # Skip merge commits (optional, can be configured)
             if self._is_merge_commit(commit.message):
-                logger.debug(f"Skipping merge commit {commit.commit_id[:8]}")
+                logger.debug(f"Skipping merge commit {commit.commit_hash[:8]}")
                 continue
-            
+
             # Skip commits without messages
             if not commit.message or not commit.message.strip():
-                logger.debug(f"Skipping commit {commit.commit_id[:8]} without message")
+                logger.debug(f"Skipping commit {commit.commit_hash[:8]} without message")
                 continue
-            
+
             unprocessed.append(commit)
-        
+
         logger.info(f"Filtered {len(commits)} commits down to {len(unprocessed)} unprocessed")
         return unprocessed
 
@@ -112,34 +110,36 @@ class CommitAggregator:
     ) -> Dict[str, List[Commit]]:
         """
         Group commits by their Jira issue key.
-        
+
         Args:
             commits: List of Commit objects to group.
-            
+
         Returns:
             Dictionary mapping Jira issue keys to lists of commits.
             Commits without a Jira issue are grouped under None key.
         """
         grouped: Dict[str, List[Commit]] = defaultdict(list)
-        
+
         for commit in commits:
-            # Try to get Jira issue from commit's jira_issue field first
-            jira_issue = commit.jira_issue
+            # Try to get Jira issue from branch's jira_issue field
+            jira_issue = None
             
-            # If not set, try to extract from branch name
-            if not jira_issue and commit.branch:
-                jira_issue = self.extract_jira_issue(commit.branch)
-            
+            if commit.branch and commit.branch.jira_issue:
+                jira_issue = commit.branch.jira_issue
+            elif commit.branch:
+                # Extract from branch name
+                jira_issue = self.extract_jira_issue(commit.branch.name)
+
             # Group by Jira issue (or None if not found)
             grouped[jira_issue].append(commit)
-        
+
         # Log grouping results
         for jira_issue, issue_commits in grouped.items():
             if jira_issue:
                 logger.info(f"Grouped {len(issue_commits)} commits under Jira issue {jira_issue}")
             else:
                 logger.info(f"Found {len(issue_commits)} commits without Jira issue")
-        
+
         return dict(grouped)
 
     def apply_time_window_batching(

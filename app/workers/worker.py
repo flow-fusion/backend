@@ -10,9 +10,9 @@ from rq.job import Job
 from rq.registry import FailedJobRegistry
 import redis
 
-from app.core.config import get_settings
-from app.core.logging_config import setup_logging, get_logger
-from app.core.database import init_db
+from app.shared.config import get_settings
+from app.shared.logging_config import setup_logging, get_logger
+from app.shared.database import init_db
 from app.processing.event_processor import EventProcessor
 from app.processing.event_queue_service import EventQueueService
 

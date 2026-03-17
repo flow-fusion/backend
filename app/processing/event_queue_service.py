@@ -3,8 +3,8 @@
 import json
 import redis
 from typing import Optional
-from app.core.config import get_settings
-from app.core.logging_config import get_logger
+from app.shared.config import get_settings
+from app.shared.logging_config import get_logger
 
 logger = get_logger("event_queue_service")
 

@@ -1,15 +1,16 @@
-"""Tests for webhook integration and worker modules."""
+"""Tests for webhook integration and worker modules - Updated for unified models."""
 
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch, MagicMock, AsyncMock
 from datetime import datetime, timedelta
 
-from app.models import Commit
+from app.shared.models import Commit, Branch
 from app.processing.webhook_integration import WebhookIntegrationService, queue_event
 from app.workers.worker import Worker, process_event_job, enqueue_event
 from app.processing.commit_aggregator import CommitAggregator
 from app.processing.ai_summary_builder import AISummaryBuilder
-from app.repositories.processing_repository import ProcessingRepository
+from app.shared.processing_repository import ProcessingRepository
+from app.processing.git_context_service import GitContext, DiffSummary, MergeRequestInfo
 
 
 # =============================================================================
@@ -117,7 +118,6 @@ class TestWorker:
         worker = Worker(use_rq=False)
         worker.initialize()
 
-        # Verify initialization
         assert worker.event_processor is not None
         assert worker.queue_service is not None
         assert worker._running is False
@@ -136,7 +136,6 @@ class TestWorkerRQMode:
         worker = Worker(use_rq=True)
         worker.initialize()
 
-        # Verify initialization
         assert worker.event_processor is not None
         assert worker.queue_service is not None
         assert worker.use_rq is True
@@ -278,50 +277,38 @@ class TestEventQueueServiceAdditional:
 
 
 # =============================================================================
-# CommitAggregator Time Window Tests
+# CommitAggregator Time Window Tests (Updated)
 # =============================================================================
 
 class TestCommitAggregatorTimeWindow:
     """Tests for time window batching in CommitAggregator."""
 
+    def _create_commit(self, commit_hash: str, message: str, minutes_offset: int = 0):
+        """Helper to create Commit with timestamp."""
+        return Commit(
+            commit_hash=commit_hash,
+            message=message,
+            branch_id=1,
+            author="Test",
+            timestamp=datetime.utcnow() + timedelta(minutes=minutes_offset),
+        )
+
     def test_apply_time_window_batching(self):
         """Test applying time window batching to commits."""
         aggregator = CommitAggregator(batch_window_minutes=30)
 
-        now = datetime.utcnow()
         commits = [
-            Commit(
-                commit_id="1",
-                message="Fix 1",
-                branch="feature/PROJ-1",
-                timestamp=now,
-            ),
-            Commit(
-                commit_id="2",
-                message="Fix 2",
-                branch="feature/PROJ-1",
-                timestamp=now + timedelta(minutes=10),
-            ),
-            Commit(
-                commit_id="3",
-                message="Fix 3",
-                branch="feature/PROJ-1",
-                timestamp=now + timedelta(minutes=20),
-            ),
-            Commit(
-                commit_id="4",
-                message="Fix 4",
-                branch="feature/PROJ-1",
-                timestamp=now + timedelta(minutes=50),  # New batch
-            ),
+            self._create_commit("1", "Fix 1", minutes_offset=0),
+            self._create_commit("2", "Fix 2", minutes_offset=10),
+            self._create_commit("3", "Fix 3", minutes_offset=20),
+            self._create_commit("4", "Fix 4", minutes_offset=50),  # New batch
         ]
 
         batches = aggregator.apply_time_window_batching(commits)
 
-        # Should create 2 batches (first 3 within 30 min, last one in new batch)
         assert len(batches) == 2
-        assert len(batches[0]) == 3  # First 3 commits within 30 min
-        assert len(batches[1]) == 1  # Last commit in new batch
+        assert len(batches[0]) == 3
+        assert len(batches[1]) == 1
 
     def test_apply_time_window_batching_empty(self):
         """Test time window batching with empty commits."""
@@ -335,14 +322,8 @@ class TestCommitAggregatorTimeWindow:
         """Test time window batching with single commit."""
         aggregator = CommitAggregator()
 
-        now = datetime.utcnow()
         commits = [
-            Commit(
-                commit_id="1",
-                message="Fix 1",
-                branch="feature/PROJ-1",
-                timestamp=now,
-            ),
+            self._create_commit("1", "Fix 1", minutes_offset=0),
         ]
 
         batches = aggregator.apply_time_window_batching(commits)
@@ -355,35 +336,39 @@ class TestCommitAggregatorTimeWindow:
         aggregator = CommitAggregator()
 
         commits = [
-            Commit(commit_id="1", message="Fix 1", branch="feature/PROJ-1", timestamp=None),
-            Commit(commit_id="2", message="Fix 2", branch="feature/PROJ-1", timestamp=None),
+            Commit(commit_hash="1", message="Fix 1", branch_id=1, author="Test", timestamp=None),
+            Commit(commit_hash="2", message="Fix 2", branch_id=1, author="Test", timestamp=None),
         ]
 
         batches = aggregator.apply_time_window_batching(commits)
 
-        # When no timestamps, both get datetime.min and are grouped together
         assert len(batches) == 1
         assert len(batches[0]) == 2
 
 
 # =============================================================================
-# AISummaryBuilder Additional Tests
+# AISummaryBuilder Additional Tests (Updated)
 # =============================================================================
 
 class TestAISummaryBuilderAdditional:
     """Additional tests for AISummaryBuilder."""
 
+    def _create_commit(self, commit_hash: str, message: str, author: str = "Ivan"):
+        """Helper to create Commit."""
+        return Commit(
+            commit_hash=commit_hash,
+            message=message,
+            author=author,
+            timestamp=datetime.utcnow(),
+            branch_id=1,
+        )
+
     def test_build_for_batch(self):
         """Test building summaries for multiple batches."""
         builder = AISummaryBuilder()
 
-        now = datetime.utcnow()
-        batch1 = [
-            Commit(commit_id="1", message="Fix 1", branch="feature/PROJ-1", timestamp=now),
-        ]
-        batch2 = [
-            Commit(commit_id="2", message="Fix 2", branch="feature/PROJ-1", timestamp=now),
-        ]
+        batch1 = [self._create_commit("1", "Fix 1")]
+        batch2 = [self._create_commit("2", "Fix 2")]
 
         summaries = builder.build_for_batch("PROJ-1", [batch1, batch2])
 
@@ -404,14 +389,11 @@ class TestAISummaryBuilderAdditional:
         """Test building summaries with empty batch in list."""
         builder = AISummaryBuilder()
 
-        now = datetime.utcnow()
-        batch1 = [
-            Commit(commit_id="1", message="Fix 1", branch="feature/PROJ-1", timestamp=now),
-        ]
+        batch1 = [self._create_commit("1", "Fix 1")]
 
         summaries = builder.build_for_batch("PROJ-1", [batch1, []])
 
-        assert len(summaries) == 1  # Empty batch skipped
+        assert len(summaries) == 1
 
 
 # =============================================================================
@@ -433,7 +415,6 @@ class TestProcessingRepositoryAdditional:
         mock_query.filter.return_value = mock_filter
         mock_filter.first.return_value = mock_event
 
-        from app.repositories.processing_repository import ProcessingRepository
         repo = ProcessingRepository(mock_session)
         repo.mark_event_as_failed(42, "Test error")
 
@@ -454,7 +435,6 @@ class TestProcessingRepositoryAdditional:
         mock_order.limit.return_value = mock_limit
         mock_limit.all.return_value = [Mock(), Mock()]
 
-        from app.repositories.processing_repository import ProcessingRepository
         repo = ProcessingRepository(mock_session)
         result = repo.get_pending_ai_summaries(limit=100)
 
@@ -471,7 +451,6 @@ class TestProcessingRepositoryAdditional:
         mock_query.filter.return_value = mock_filter
         mock_filter.first.return_value = mock_summary
 
-        from app.repositories.processing_repository import ProcessingRepository
         repo = ProcessingRepository(mock_session)
         repo.mark_ai_summary_as_processed(42, jira_comment_id=123)
 
@@ -483,7 +462,6 @@ class TestProcessingRepositoryAdditional:
         """Test flush, commit, and rollback methods."""
         mock_session = Mock()
 
-        from app.repositories.processing_repository import ProcessingRepository
         repo = ProcessingRepository(mock_session)
 
         repo.flush()
