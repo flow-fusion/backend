@@ -40,21 +40,45 @@ class JiraClient:
     MAX_RETRIES = 3
     RETRY_DELAY = 1.0  # seconds
 
-    def __init__(self, config: JiraConfig):
+    def __init__(self, config: JiraConfig, use_bearer_auth: bool = False):
         """
         Initialize Jira client.
 
         Args:
             config: Jira configuration with URL and credentials.
+            use_bearer_auth: Use Bearer token auth instead of Basic (default: False).
         """
         self.config = config
         self.base_url = config.base_api_url
         self.session = requests.Session()
-        self.session.auth = config.auth
-        self.session.headers.update({
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        })
+        
+        # Handle authentication
+        if use_bearer_auth:
+            # Bearer token authentication (for Jira Cloud/Corporate)
+            self.session.headers.update({
+                "Authorization": f"Bearer {config.token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            })
+        else:
+            # Basic authentication with email:token
+            self.session.auth = config.auth
+            
+            # Handle Base64 encoded tokens (format: email:token encoded in Base64)
+            import base64
+            try:
+                if config.token and len(config.token) > 20 and config.token.replace('+', '').replace('/', '').replace('=', '').isalnum():
+                    decoded = base64.b64decode(config.token).decode('utf-8', errors='ignore')
+                    if ':' in decoded:
+                        _, token = decoded.split(':', 1)
+                        self.session.auth = (config.email, token)
+            except Exception:
+                pass
+            
+            self.session.headers.update({
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            })
 
     def _request(
         self,
