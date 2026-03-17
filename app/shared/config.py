@@ -1,18 +1,25 @@
 """Application configuration."""
 
 from typing import Optional
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
 
 
 class Settings(BaseSettings):
     """Application settings."""
 
-    # Application
-    APP_NAME: str = "AI Concurs Backend"
-    DEBUG: bool = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=True,
+    )
 
-    # Database
+    # Application
+    APP_NAME: str = "FlowFusion"
+    DEBUG: bool = False
+    VERSION: str = "1.0.0"
+
+    # Database (REQUIRED for production, optional for testing)
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/ai_concurs"
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
@@ -39,22 +46,26 @@ class Settings(BaseSettings):
     GITLAB_API_TIMEOUT: int = 30
     GITLAB_API_RETRY_COUNT: int = 3
 
-    # GitLab Webhook
-    GITLAB_WEBHOOK_SECRET: str = ""  # Required! Set via environment variable
+    # GitLab Webhook (REQUIRED for production)
+    GITLAB_WEBHOOK_SECRET: str = ""
 
-    # Jira Integration
+    # Jira Integration (OPTIONAL)
     JIRA_URL: str = ""
     JIRA_EMAIL: str = ""
     JIRA_TOKEN: str = ""
-    JIRA_AUTO_POST: bool = True  # Auto-post AI summaries to Jira
+    JIRA_AUTO_POST: bool = True
 
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    def validate_required(self) -> None:
+        """Validate required settings are configured for production."""
+        import warnings
+        if not self.GITLAB_WEBHOOK_SECRET:
+            warnings.warn("GITLAB_WEBHOOK_SECRET is not configured - webhook validation disabled")
+        if not self.DATABASE_URL:
+            raise ValueError("DATABASE_URL is required")
 
 
 @lru_cache()

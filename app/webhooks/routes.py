@@ -13,7 +13,9 @@ The webhook layer is responsible for:
 It does NOT process events - that is handled by the PROCESSING LAYER.
 """
 
+import json
 import logging
+from typing import Any, Optional
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Request, status
 from sqlalchemy.orm import Session
@@ -36,8 +38,8 @@ GITLAB_TOKEN_HEADER = "X-Gitlab-Token"
 async def gitlab_webhook(
     request: Request,
     db: Session = Depends(get_session),
-    x_gitlab_event: str | None = Header(default=None, alias=GITLAB_EVENT_HEADER),
-    x_gitlab_token: str | None = Header(default=None, alias=GITLAB_TOKEN_HEADER),
+    x_gitlab_event: Optional[str] = Header(default=None, alias=GITLAB_EVENT_HEADER),
+    x_gitlab_token: Optional[str] = Header(default=None, alias=GITLAB_TOKEN_HEADER),
 ) -> dict[str, str]:
     """
     Receive and process GitLab webhook events.
@@ -88,7 +90,7 @@ async def gitlab_webhook(
     return result
 
 
-def _validate_token(token: str | None) -> None:
+def _validate_token(token: Optional[str]) -> None:
     """
     Validate the GitLab webhook secret token.
 
