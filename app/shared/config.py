@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     # GitLab Webhook
     GITLAB_WEBHOOK_SECRET: str = ""  # Required! Set via environment variable
 
+    # Jira Integration
+    JIRA_URL: str = ""
+    JIRA_EMAIL: str = ""
+    JIRA_TOKEN: str = ""
+    JIRA_AUTO_POST: bool = True  # Auto-post AI summaries to Jira
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"
