@@ -5,7 +5,7 @@
 ## Архитектура
 
 ```
-GitLab Webhook → Событие в БД → Redis Queue → Worker → AI Summary → Jira (будущий слой)
+GitLab Webhook → Событие в БД → Redis Queue → Worker → Git Context Loader → AI Summary → Jira (будущий слой)
 ```
 
 ## Компоненты
@@ -21,7 +21,15 @@ Worker для обработки событий:
 - Получает события из очереди
 - Дедуплицирует коммиты
 - Группирует по Jira-задачам
-- Создаёт AI-саммари
+- Загружает Git-контекст из GitLab API
+- Создаёт AI-саммари с enriched данными
+
+### GitContextService (NEW)
+Сервис для обогащения AI-саммари данными из GitLab:
+- Загружает информацию об изменённых файлах
+- Создаёт сжатые описания diff (additions/deletions)
+- Извлекает информацию о Merge Request
+- Кэширует API-ответы для уменьшения количества вызовов
 
 ### CommitAggregator
 Группировка коммитов по Jira-задачам:
@@ -33,6 +41,7 @@ Worker для обработки событий:
 Подготовка данных для AI-обработки:
 - Агрегирует сообщения коммитов
 - Собирает метаданные (авторы, временной диапазон)
+- Добавляет Git-контекст (файлы, diff summary, MR info)
 - Генерирует структурированный JSON для AI
 
 ## Установка
@@ -53,6 +62,10 @@ cp .env.example .env
 - `DATABASE_URL`: Строка подключения PostgreSQL
 - `REDIS_HOST`, `REDIS_PORT`: Подключение к Redis
 - `COMMIT_BATCH_WINDOW_MINUTES`: Временное окно для батчинга коммитов
+- `GITLAB_BASE_URL`: URL GitLab API (по умолчанию https://gitlab.com)
+- `GITLAB_API_TOKEN`: Токен для доступа к GitLab API
+- `GITLAB_API_TIMEOUT`: Таймаут API-запросов в секундах
+- `GITLAB_API_RETRY_COUNT`: Количество попыток при ошибке API
 
 ## Запуск Worker
 
@@ -100,9 +113,55 @@ queue_event(event.id)
 5. Worker загружает событие и коммиты из БД
 6. Коммиты фильтруются (дедупликация)
 7. Коммиты группируются по Jira-задачам
-8. AI-саммари создаётся и сохраняется
-9. Коммиты помечаются как обработанные
-10. Событие помечается как обработанное
+8. **Загружается Git-контекст из GitLab API** (файлы, diff summary, MR info)
+9. **AI-саммари создаётся с enriched данными**
+10. AI-саммари сохраняется
+11. Коммиты помечаются как обработанные
+12. Событие помечается как обработанное
+
+## Git Context Enrichment
+
+Сервис `GitContextService` обогащает AI-саммари дополнительными данными:
+
+### Изменённые файлы
+Список всех файлов, затронутых коммитами:
+```json
+"changed_files": [
+  "auth_service.py",
+  "login_controller.ts",
+  "utils/helpers.py"
+]
+```
+
+### Diff Summary
+Сжатое описание изменений для каждого файла:
+```json
+"diff_summary": [
+  "auth_service.py: +20 lines added, -3 lines removed",
+  "login_controller.ts: +15 lines added",
+  "utils/helpers.py: +5 lines added, -10 lines removed"
+]
+```
+
+### Merge Request Info
+Информация о связанном MR:
+```json
+"merge_request_title": "Fix login redirect bug",
+"merge_request_description": "This MR fixes the redirect issue after successful login",
+"merge_request_author": "Ivan Petrov"
+```
+
+### Кэширование
+Для уменьшения количества API-вызовов:
+- Кэш коммитов по SHA
+- Кэш diff по SHA
+- Кэш MR по ветке
+
+### Обработка ошибок
+Если GitLab API недоступен:
+- Логирование предупреждения
+- Продолжение обработки без Git-контекста
+- AI-саммари создаётся только на основе commit messages
 
 ## Обработка ошибок
 

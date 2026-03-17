@@ -33,6 +33,12 @@ class Settings(BaseSettings):
     MAX_RETRIES: int = 3
     RETRY_DELAY_SECONDS: int = 60
 
+    # GitLab API
+    GITLAB_BASE_URL: str = "https://gitlab.com"
+    GITLAB_API_TOKEN: Optional[str] = None
+    GITLAB_API_TIMEOUT: int = 30
+    GITLAB_API_RETRY_COUNT: int = 3
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

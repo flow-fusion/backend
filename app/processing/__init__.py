@@ -4,10 +4,15 @@ from app.processing.event_queue_service import EventQueueService
 from app.processing.event_processor import EventProcessor
 from app.processing.commit_aggregator import CommitAggregator
 from app.processing.ai_summary_builder import AISummaryBuilder
+from app.processing.git_context_service import GitContextService, GitContext, DiffSummary, MergeRequestInfo
 
 __all__ = [
     "EventQueueService",
     "EventProcessor",
     "CommitAggregator",
     "AISummaryBuilder",
+    "GitContextService",
+    "GitContext",
+    "DiffSummary",
+    "MergeRequestInfo",
 ]

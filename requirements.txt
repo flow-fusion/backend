@@ -13,6 +13,9 @@ alembic==1.13.1
 redis==5.0.1
 rq==1.15.1
 
+# HTTP client for GitLab API
+httpx==0.26.0
+
 # Async support
 asyncio==3.4.3
 aiohttp==3.9.1
