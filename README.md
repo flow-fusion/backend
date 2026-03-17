@@ -1,10 +1,10 @@
 # AI Concurs Backend
 
-Единый сервис для приёма GitLab webhook'ов и автоматической генерации AI-саммари для Jira-задач.
+Единый сервис для приёма GitLab webhook'ов, генерации AI-саммари и автоматической синхронизации с Jira.
 
 ## Архитектура
 
-Проект использует **трёхслойную архитектуру**:
+Проект использует **четырёхслойную архитектуру**:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -21,6 +21,15 @@
 │  (app/processing/) — Асинхронная обработка событий          │
 │                                                             │
 │  Redis ──► EventProcessor ──► GitContext ──► AI Summary    │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              │ ai_summaries table
+                              ▼
+┌─────────────────────────────────────────────────────────────┐
+│                 JIRA INTEGRATION LAYER                      │
+│  (app/jira_integration/) — Синхронизация с Jira             │
+│                                                             │
+│  AI Summary ──► JiraClient ──► Comment + Transition        │
 └─────────────────────────────────────────────────────────────┘
                               ▲
                               │ использует
@@ -76,13 +85,20 @@ ai_concurs_backend/
 │   │   ├── __init__.py
 │   │   └── worker.py          # Background worker
 │   │
+│   ├── jira_integration/      # JIRA INTEGRATION LAYER
+│   │   ├── __init__.py
+│   │   ├── config.py          # Jira configuration
+│   │   ├── jira_client.py     # Jira API client
+│   │   └── mr_processor.py    # MR processor with Jira sync
+│   │
 │   └── main.py                # FastAPI приложение
 │
-├── tests/                     # Тесты (114 теста)
+├── tests/                     # Тесты (137 тестов)
 │   ├── test_processing.py
 │   ├── test_processing_comprehensive.py
 │   ├── test_integration.py
-│   └── test_git_context.py
+│   ├── test_git_context.py
+│   └── test_jira_integration.py
 │
 ├── requirements.txt
 ├── .env.example
@@ -121,6 +137,12 @@ DATABASE_URL=postgresql://postgres:postgres@localhost:5432/ai_concurs
 # Redis
 REDIS_HOST=localhost
 REDIS_PORT=6379
+
+# Jira (ОПЦИОНАЛЬНО - для авто-постинга в Jira)
+JIRA_URL=https://your-company.atlassian.net
+JIRA_EMAIL=your-email@company.com
+JIRA_TOKEN=your_jira_api_token
+JIRA_AUTO_POST=true  # Включить авто-постинг в Jira
 ```
 
 ### Полный список настроек

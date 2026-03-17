@@ -15,6 +15,7 @@ rq==1.15.1
 
 # HTTP client for GitLab API
 httpx==0.26.0
+requests==2.31.0
 
 # Async support
 asyncio==3.4.3
