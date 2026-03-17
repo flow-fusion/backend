@@ -5,9 +5,9 @@ from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, field
 from functools import lru_cache
 import httpx
-from app.core.config import get_settings
-from app.core.logging_config import get_logger
-from app.models import Commit
+from app.shared.config import get_settings
+from app.shared.logging_config import get_logger
+from app.shared.models import Commit
 
 logger = get_logger("git_context_service")
 
@@ -352,13 +352,13 @@ class GitContextService:
     ) -> GitContext:
         """
         Load complete Git context for a list of commits.
-        
+
         This is the main entry point for the service.
-        
+
         Args:
             commits: List of Commit objects
             project_id: Optional GitLab project ID (auto-detected from commits if not provided)
-            
+
         Returns:
             GitContext with all enriched data
         """
@@ -366,12 +366,12 @@ class GitContextService:
             logger.debug("No commits provided for Git context")
             return GitContext()
 
-        # Detect project ID from first commit
+        # Detect project ID from first commit's branch relationship
         if not project_id:
             first_commit = commits[0]
-            if first_commit.repository:
-                project_id = self._get_project_id(first_commit.repository)
-        
+            if first_commit.branch and first_commit.branch.repository:
+                project_id = self._get_project_id(first_commit.branch.repository.name)
+
         if not project_id:
             logger.warning("Cannot determine project ID, skipping Git context")
             return GitContext()
@@ -379,8 +379,8 @@ class GitContextService:
         logger.info(f"Loading Git context for project {project_id}, {len(commits)} commits")
 
         context = GitContext(
-            repository_name=commits[0].repository if commits else None,
-            branch_name=commits[0].branch if commits else None,
+            repository_name=commits[0].branch.repository.name if commits and commits[0].branch and commits[0].branch.repository else None,
+            branch_name=commits[0].branch.name if commits and commits[0].branch else None,
         )
 
         # Collect all changed files and diff summaries
@@ -388,12 +388,12 @@ class GitContextService:
         seen_files: set = set()
 
         for commit in commits:
-            if not commit.commit_id:
+            if not commit.commit_hash:
                 continue
 
             # Get commit diff
-            diff_data = await self.get_commit_diff(project_id, commit.commit_id)
-            
+            diff_data = await self.get_commit_diff(project_id, commit.commit_hash)
+
             if diff_data:
                 summaries = self._summarize_diff(diff_data)
                 for summary in summaries:

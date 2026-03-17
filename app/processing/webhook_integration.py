@@ -1,7 +1,10 @@
-"""Webhook integration service for pushing events to the processing queue."""
+"""Webhook integration service for pushing events to the processing queue.
+
+This is the INTEGRATION POINT between the Webhook Layer and Processing Layer.
+"""
 
 from typing import Optional
-from app.core.logging_config import get_logger
+from app.shared.logging_config import get_logger
 from app.processing.event_queue_service import EventQueueService
 
 logger = get_logger("webhook_integration")

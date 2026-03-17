@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     GITLAB_API_TIMEOUT: int = 30
     GITLAB_API_RETRY_COUNT: int = 3
 
+    # GitLab Webhook
+    GITLAB_WEBHOOK_SECRET: str = ""  # Required! Set via environment variable
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

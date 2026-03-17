@@ -2,8 +2,8 @@
 
 from typing import Dict, List, Any, Optional
 from datetime import datetime
-from app.models import Commit
-from app.core.logging_config import get_logger
+from app.shared.models import Commit
+from app.shared.logging_config import get_logger
 from app.processing.git_context_service import GitContext
 
 logger = get_logger("ai_summary_builder")
@@ -78,9 +78,20 @@ class AISummaryBuilder:
         # Calculate time range
         time_range = self._calculate_time_range(commits)
 
-        # Get repository and branch info
-        repository = commits[0].repository if commits else None
-        branch = commits[0].branch if commits else None
+        # Get repository and branch info from Git context or first commit's branch relationship
+        repository = None
+        branch_name = None
+        
+        if git_context:
+            repository = git_context.repository_name
+            branch_name = git_context.branch_name
+        elif commits and commits[0].branch:
+            # Get branch info from relationship
+            branch_obj = commits[0].branch
+            branch_name = branch_obj.name if branch_obj else None
+            # Repository would need to come from the branch's relationship
+            if branch_obj and hasattr(branch_obj, 'repository'):
+                repository = branch_obj.repository.name if branch_obj.repository else None
 
         summary_input = {
             "jira_issue": jira_issue,
@@ -89,7 +100,7 @@ class AISummaryBuilder:
             "time_range": time_range,
             "commit_count": len(commits),
             "repository": repository,
-            "branch": branch,
+            "branch": branch_name,
         }
 
         # Add Git context if available

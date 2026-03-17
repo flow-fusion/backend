@@ -1,11 +1,11 @@
-"""Tests for GitContextService."""
+"""Tests for GitContextService - Updated for unified models."""
 
 import pytest
 import asyncio
 from datetime import datetime
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
-from app.models import Commit
+from app.shared.models import Commit, Branch
 from app.processing.git_context_service import (
     GitContextService,
     GitContext,
@@ -79,9 +79,9 @@ class TestMergeRequestInfo:
             state="opened",
             web_url="https://gitlab.com/project/merge_requests/123",
         )
-        
+
         result = mr.to_dict()
-        
+
         assert result["title"] == "Fix login bug"
         assert result["description"] == "This fixes the redirect issue"
         assert result["author"] == "Ivan"
@@ -100,7 +100,7 @@ class TestGitContext:
         """Test converting empty context to dictionary."""
         context = GitContext()
         result = context.to_dict()
-        
+
         assert result["changed_files"] == []
         assert result["diff_summary"] == []
         assert result["merge_request_title"] == ""
@@ -115,7 +115,7 @@ class TestGitContext:
             status="modified",
         )
         mr = MergeRequestInfo(title="Test MR", description="Test desc", author="Ivan")
-        
+
         context = GitContext(
             changed_files=["test.py"],
             diff_summary=[diff_summary],
@@ -123,9 +123,9 @@ class TestGitContext:
             repository_name="test-repo",
             branch_name="feature/test",
         )
-        
+
         result = context.to_dict()
-        
+
         assert result["changed_files"] == ["test.py"]
         assert len(result["diff_summary"]) == 1
         assert "test.py:" in result["diff_summary"][0]
@@ -186,9 +186,9 @@ class TestGitContextService:
                 "renamed_file": False,
             }
         ]
-        
+
         result = self.service._summarize_diff(diff_data)
-        
+
         assert len(result) == 1
         assert result[0].filename == "auth_service.py"
         assert result[0].additions == 2
@@ -205,9 +205,9 @@ class TestGitContextService:
                 "new_file": True,
             }
         ]
-        
+
         result = self.service._summarize_diff(diff_data)
-        
+
         assert len(result) == 1
         assert result[0].additions == 10
         assert result[0].deletions == 5
@@ -221,9 +221,9 @@ class TestGitContextService:
                 "deleted_file": True,
             }
         ]
-        
+
         result = self.service._summarize_diff(diff_data)
-        
+
         assert len(result) == 1
         assert result[0].status == "deleted"
 
@@ -236,9 +236,9 @@ class TestGitContextService:
                 "renamed_file": True,
             }
         ]
-        
+
         result = self.service._summarize_diff(diff_data)
-        
+
         assert len(result) == 1
         assert result[0].filename == "new_name.py"
         assert result[0].status == "renamed"
@@ -250,11 +250,10 @@ class TestGitContextService:
             DiffSummary("test.py", 5, 3, "modified"),
             DiffSummary("other.py", 20, 0, "added"),
         ]
-        
+
         result = self.service._merge_diff_summaries(summaries)
-        
+
         assert len(result) == 2
-        # Find test.py in results
         test_py = next(s for s in result if s.filename == "test.py")
         assert test_py.additions == 15
         assert test_py.deletions == 8
@@ -264,9 +263,9 @@ class TestGitContextService:
         self.service._commit_cache["key"] = "value"
         self.service._diff_cache["key"] = "value"
         self.service._mr_cache["key"] = "value"
-        
+
         self.service.clear_cache()
-        
+
         assert len(self.service._commit_cache) == 0
         assert len(self.service._diff_cache) == 0
         assert len(self.service._mr_cache) == 0
@@ -280,9 +279,9 @@ class TestGitContextServiceAsync:
         """Test getting commit details from cache."""
         service = GitContextService()
         service._commit_cache["proj:abc123"] = {"id": "abc123"}
-        
+
         result = await service.get_commit_details("proj", "abc123")
-        
+
         assert result == {"id": "abc123"}
 
     @pytest.mark.asyncio
@@ -293,10 +292,10 @@ class TestGitContextServiceAsync:
         mock_response.json.return_value = {"id": "abc123", "message": "Fix bug"}
         mock_response.raise_for_status = Mock()
         mock_client.request.return_value = mock_response
-        
+
         service = GitContextService(http_client=mock_client)
         result = await service.get_commit_details("proj", "abc123")
-        
+
         assert result is not None
         assert result["id"] == "abc123"
 
@@ -307,10 +306,10 @@ class TestGitContextServiceAsync:
         mock_response = Mock()
         mock_response.raise_for_status.side_effect = Exception("404 Not Found")
         mock_client.request.return_value = mock_response
-        
+
         service = GitContextService(http_client=mock_client)
         result = await service.get_commit_details("proj", "invalid")
-        
+
         assert result is None
 
     @pytest.mark.asyncio
@@ -318,9 +317,9 @@ class TestGitContextServiceAsync:
         """Test getting diff from cache."""
         service = GitContextService()
         service._diff_cache["proj:abc123"] = [{"new_path": "test.py"}]
-        
+
         result = await service.get_commit_diff("proj", "abc123")
-        
+
         assert result == [{"new_path": "test.py"}]
 
     @pytest.mark.asyncio
@@ -329,9 +328,9 @@ class TestGitContextServiceAsync:
         service = GitContextService()
         cached_mr = MergeRequestInfo(title="Cached MR")
         service._mr_cache["proj:feature/test"] = cached_mr
-        
+
         result = await service.get_merge_request_by_branch("proj", "feature/test")
-        
+
         assert result is not None
         assert result.title == "Cached MR"
 
@@ -340,13 +339,13 @@ class TestGitContextServiceAsync:
         """Test getting MR when none exists."""
         mock_client = AsyncMock()
         mock_response = Mock()
-        mock_response.json.return_value = []  # No MRs
+        mock_response.json.return_value = []
         mock_response.raise_for_status = Mock()
         mock_client.request.return_value = mock_response
-        
+
         service = GitContextService(http_client=mock_client)
         result = await service.get_merge_request_by_branch("proj", "feature/test")
-        
+
         assert result is None
 
     @pytest.mark.asyncio
@@ -364,10 +363,10 @@ class TestGitContextServiceAsync:
         ]
         mock_response.raise_for_status = Mock()
         mock_client.request.return_value = mock_response
-        
+
         service = GitContextService(http_client=mock_client)
         result = await service.get_merge_request_by_branch("proj", "feature/login")
-        
+
         assert result is not None
         assert result.title == "Fix login"
         assert result.author == "Ivan"
@@ -377,7 +376,7 @@ class TestGitContextServiceAsync:
         """Test loading context with empty commits list."""
         service = GitContextService()
         result = await service.load_context([])
-        
+
         assert result.changed_files == []
         assert result.diff_summary == []
         assert result.merge_request is None
@@ -386,18 +385,19 @@ class TestGitContextServiceAsync:
     async def test_load_context_no_project_id(self):
         """Test loading context when project ID cannot be determined."""
         service = GitContextService()
-        commits = [Commit(commit_id="abc", repository=None, branch=None)]
-        
+        commits = [
+            Commit(commit_hash="abc", branch_id=1, author="Ivan", message="test", timestamp=datetime.utcnow())
+        ]
+
         result = await service.load_context(commits)
-        
+
         assert result.changed_files == []
 
     @pytest.mark.asyncio
     async def test_load_context_with_mock(self):
         """Test loading context with mocked API."""
         mock_client = AsyncMock()
-        
-        # Mock diff response
+
         diff_response = Mock()
         diff_response.json.return_value = [
             {
@@ -407,8 +407,7 @@ class TestGitContextServiceAsync:
             }
         ]
         diff_response.raise_for_status = Mock()
-        
-        # Mock MR response
+
         mr_response = Mock()
         mr_response.json.return_value = [
             {
@@ -419,29 +418,34 @@ class TestGitContextServiceAsync:
             }
         ]
         mr_response.raise_for_status = Mock()
-        
+
         mock_client.request.side_effect = [diff_response, mr_response]
-        
+
         service = GitContextService(http_client=mock_client)
         commits = [
             Commit(
-                commit_id="abc123",
-                repository="test-repo",
-                branch="feature/test",
+                commit_hash="abc123",
+                branch_id=1,
+                author="Ivan",
+                message="test",
+                timestamp=datetime.utcnow(),
             )
         ]
-        
+
+        # Mock branch relationship using MagicMock with proper SQLAlchemy attributes
+        mock_branch = MagicMock()
+        mock_branch.name = "feature/test"
+        mock_branch.repository = MagicMock()
+        mock_branch.repository.name = "test-repo"
+        commits[0].branch = mock_branch
+
         result = await service.load_context(commits)
-        
+
         assert "test.py" in result.changed_files
         assert len(result.diff_summary) == 1
         assert result.merge_request is not None
         assert result.merge_request.title == "Test MR"
 
-
-# =============================================================================
-# GitContextServiceSync Tests
-# =============================================================================
 
 class TestGitContextServiceSync:
     """Tests for synchronous wrapper."""
@@ -454,16 +458,15 @@ class TestGitContextServiceSync:
         mock_service.__aenter__ = AsyncMock(return_value=mock_service)
         mock_service.__aexit__ = AsyncMock(return_value=None)
         mock_service_class.return_value = mock_service
-        
+
         sync_service = GitContextServiceSync()
-        result = sync_service.load_context([Commit(commit_id="abc")])
-        
+        commits = [
+            Commit(commit_hash="abc", branch_id=1, author="Ivan", message="test", timestamp=datetime.utcnow())
+        ]
+        result = sync_service.load_context(commits)
+
         assert isinstance(result, GitContext)
 
-
-# =============================================================================
-# GitContextService Error Handling Tests
-# =============================================================================
 
 class TestGitContextServiceErrorHandling:
     """Error handling tests for GitContextService."""
@@ -472,22 +475,22 @@ class TestGitContextServiceErrorHandling:
     async def test_request_timeout(self):
         """Test request with timeout."""
         import httpx
-        
+
         mock_client = AsyncMock()
         mock_client.request.side_effect = httpx.TimeoutException("Timeout")
-        
+
         service = GitContextService(http_client=mock_client)
-        service.retry_count = 1  # Override retry count for test
-        
+        service.retry_count = 1
+
         result = await service._request("GET", "test/endpoint")
-        
+
         assert result is None
 
     @pytest.mark.asyncio
     async def test_request_404(self):
         """Test request with 404 response."""
         import httpx
-        
+
         mock_client = AsyncMock()
         mock_response = Mock()
         mock_response.status_code = 404
@@ -496,17 +499,17 @@ class TestGitContextServiceErrorHandling:
             request=Mock(),
             response=mock_response,
         )
-        
+
         service = GitContextService(http_client=mock_client)
         result = await service._request("GET", "test/endpoint")
-        
+
         assert result is None
 
     @pytest.mark.asyncio
     async def test_request_http_error(self):
         """Test request with HTTP error."""
         import httpx
-        
+
         mock_client = AsyncMock()
         mock_response = Mock()
         mock_response.status_code = 500
@@ -515,12 +518,12 @@ class TestGitContextServiceErrorHandling:
             request=Mock(),
             response=mock_response,
         )
-        
+
         service = GitContextService(http_client=mock_client)
-        service.retry_count = 1  # Override retry count for test
-        
+        service.retry_count = 1
+
         result = await service._request("GET", "test/endpoint")
-        
+
         assert result is None
 
     @pytest.mark.asyncio
@@ -528,9 +531,9 @@ class TestGitContextServiceErrorHandling:
         """Test request without initialized client."""
         service = GitContextService(http_client=None)
         service._client = None
-        
+
         result = await service._request("GET", "test/endpoint")
-        
+
         assert result is None
 
     @pytest.mark.asyncio
@@ -538,16 +541,21 @@ class TestGitContextServiceErrorHandling:
         """Test that load_context continues gracefully on API failure."""
         mock_client = AsyncMock()
         mock_client.request.side_effect = Exception("API Error")
-        
-        service = GitContextService(
-            http_client=mock_client,
-        )
-        service.retry_count = 1  # Override retry count for test
-        
-        commits = [Commit(commit_id="abc", repository="test-repo", branch="feature/test")]
-        
-        # Should not raise, but return context without GitLab data
+
+        service = GitContextService(http_client=mock_client)
+        service.retry_count = 1
+
+        commits = [
+            Commit(
+                commit_hash="abc",
+                branch_id=1,
+                author="Ivan",
+                message="test",
+                timestamp=datetime.utcnow(),
+            )
+        ]
+
         result = await service.load_context(commits)
-        
+
         assert isinstance(result, GitContext)
-        assert result.changed_files == []  # No data due to API failure
+        assert result.changed_files == []

@@ -4,8 +4,8 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import update, and_
-from app.models import Event, Commit, AISummary
-from app.core.logging_config import get_logger
+from app.shared.models import Event, Commit, AISummary, Branch
+from app.shared.logging_config import get_logger
 
 logger = get_logger("processing_repository")
 
@@ -223,16 +223,21 @@ class ProcessingRepository:
         Args:
             commit_hash: Git commit hash.
             branch: Branch name.
-            
+
         Returns:
             True if commit was already processed.
         """
+        # Get branch object by name
+        branch_obj = self.session.query(Branch).filter(Branch.name == branch).first()
+        if not branch_obj:
+            return False
+            
         existing = (
             self.session.query(Commit)
             .filter(
                 and_(
-                    Commit.commit_id == commit_hash,
-                    Commit.branch == branch,
+                    Commit.commit_hash == commit_hash,
+                    Commit.branch_id == branch_obj.id,
                     Commit.processed == True,
                 )
             )
