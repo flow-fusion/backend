@@ -43,24 +43,31 @@ class ProcessingRepository:
     def get_unprocessed_commits_for_event(self, event_id: int) -> List[Commit]:
         """
         Fetch all unprocessed commits for an event.
-        
+
         Args:
             event_id: The database ID of the event.
-            
+
         Returns:
             List of unprocessed Commit objects.
         """
+        # Get event to find associated branch
+        event = self.get_event(event_id)
+        if not event or not event.branch_id:
+            logger.debug(f"Event {event_id} has no branch, no commits to process")
+            return []
+        
+        # Get commits through branch relationship
         commits = (
             self.session.query(Commit)
             .filter(
                 and_(
-                    Commit.event_id == event_id,
+                    Commit.branch_id == event.branch_id,
                     Commit.processed == False,
                 )
             )
             .all()
         )
-        
+
         logger.debug(f"Found {len(commits)} unprocessed commits for event {event_id}")
         return commits
 

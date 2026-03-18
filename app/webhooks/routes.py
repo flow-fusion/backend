@@ -82,7 +82,13 @@ async def gitlab_webhook(
     # Step 4: Handle webhook (WEBHOOK LAYER)
     # This parses, stores, and queues the event
     service = WebhookService(db)
+    
+    # Log incoming payload for debugging
+    logger.info(f"Received webhook: event_type={payload.get('object_kind')}, commits={len(payload.get('commits', []))}")
+    
     result = service.handle_webhook(payload, x_gitlab_event)
+    
+    logger.info(f"Webhook result: {result}")
 
     if result["status"] == "ignored":
         return result
@@ -102,7 +108,7 @@ def _validate_token(token: Optional[str]) -> None:
     Raises:
         HTTPException: 403 if token is missing or invalid.
     """
-    from app.core.config import get_settings
+    from app.shared.config import get_settings
 
     settings = get_settings()
 
@@ -113,7 +119,7 @@ def _validate_token(token: Optional[str]) -> None:
             detail="Missing authentication token",
         )
 
-    if token != settings.gitlab_webhook_secret:
+    if token != settings.GITLAB_WEBHOOK_SECRET:
         logger.warning("Invalid webhook token received")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

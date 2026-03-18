@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     JIRA_EMAIL: str = ""
     JIRA_TOKEN: str = ""
     JIRA_AUTO_POST: bool = True
+    JIRA_USE_BEARER_AUTH: bool = False  # Use Bearer token auth instead of Basic
 
     # Logging
     LOG_LEVEL: str = "INFO"

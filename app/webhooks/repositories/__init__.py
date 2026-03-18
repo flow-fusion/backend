@@ -127,6 +127,10 @@ class WebhookRepository:
 
     def _store_commits(self, branch_id: int, commits: list[GitLabCommit]) -> None:
         """Store multiple commits for a branch."""
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.debug(f"Storing {len(commits)} commits for branch {branch_id}")
+        
         for commit_data in commits:
             commit = Commit(
                 commit_hash=commit_data.commit_id,
@@ -136,7 +140,10 @@ class WebhookRepository:
                 timestamp=commit_data.timestamp,
             )
             self.db.add(commit)
+            logger.debug(f"Added commit {commit_data.commit_id[:8]}")
+        
         self.db.flush()
+        logger.info(f"Stored {len(commits)} commits successfully")
 
     def _get_or_create_merge_request(
         self,

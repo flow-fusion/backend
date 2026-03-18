@@ -30,4 +30,9 @@ class JiraConfig:
     @property
     def base_api_url(self) -> str:
         """Return the base API URL for Jira REST API."""
-        return f"{self.url}/rest/api/3"
+        # Remove trailing slashes
+        url = self.url.rstrip('/')
+        # Don't add /rest/api/3 if already in URL
+        if url.endswith('/rest/api/3'):
+            return url
+        return f"{url}/rest/api/3"

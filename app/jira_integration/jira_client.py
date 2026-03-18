@@ -40,21 +40,34 @@ class JiraClient:
     MAX_RETRIES = 3
     RETRY_DELAY = 1.0  # seconds
 
-    def __init__(self, config: JiraConfig):
+    def __init__(self, config: JiraConfig, use_bearer_auth: bool = False):
         """
         Initialize Jira client.
 
         Args:
             config: Jira configuration with URL and credentials.
+            use_bearer_auth: Use Bearer token auth instead of Basic (default: False).
         """
         self.config = config
         self.base_url = config.base_api_url
         self.session = requests.Session()
-        self.session.auth = config.auth
-        self.session.headers.update({
-            "Accept": "application/json",
-            "Content-Type": "application/json",
-        })
+        
+        # Handle authentication
+        if use_bearer_auth:
+            # Bearer token authentication (for Jira Cloud/Corporate)
+            self.session.headers.update({
+                "Authorization": f"Bearer {config.token}",
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            })
+        else:
+            # Basic authentication with email:token
+            self.session.auth = (config.email, config.token)
+            
+            self.session.headers.update({
+                "Accept": "application/json",
+                "Content-Type": "application/json",
+            })
 
     def _request(
         self,
@@ -68,7 +81,7 @@ class JiraClient:
 
         Args:
             method: HTTP method (GET, POST, PUT, etc.).
-            endpoint: API endpoint (relative to base URL).
+            endpoint: API endpoint (relative to base_api_url, e.g., "myself" or "issue/PROJ-123").
             json: JSON payload for request body.
             params: Query parameters.
 
@@ -78,7 +91,9 @@ class JiraClient:
         Raises:
             requests.RequestException: If all retries fail.
         """
+        # base_api_url already includes /rest/api/3, just add endpoint
         url = f"{self.base_url}/{endpoint}"
+        
         last_error: Exception | None = None
 
         for attempt in range(self.MAX_RETRIES):
@@ -89,6 +104,13 @@ class JiraClient:
                     json=json,
                     params=params,
                 )
+
+                # DEBUG: Print response info
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Jira API {method} {url}: {response.status_code}")
+                logger.debug(f"Response headers: {dict(response.headers)}")
+                logger.debug(f"Response body (first 500 chars): {response.text[:500]}")
 
                 # Handle rate limiting and server errors with retry
                 if response.status_code in (429, *range(500, 600)):
@@ -103,6 +125,12 @@ class JiraClient:
                     )
                     time.sleep(delay)
                     continue
+
+                # Check if response is JSON
+                content_type = response.headers.get("Content-Type", "")
+                if "application/json" not in content_type:
+                    logger.warning(f"Response is not JSON: {content_type}")
+                    logger.warning(f"Response: {response.text[:200]}")
 
                 response.raise_for_status()
 
