@@ -73,6 +73,7 @@ class Commit(Base):
     message = Column(Text, nullable=False)
     timestamp = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    processed = Column(Boolean, default=False, nullable=False, index=True)
 
     branch = relationship("Branch", back_populates="commits")
 

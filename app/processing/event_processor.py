@@ -137,8 +137,9 @@ class EventProcessor:
 
                     # Update in-memory cache
                     for commit in issue_commits:
+                        branch_name = commit.branch.name if commit.branch else "unknown"
                         self._processed_commit_hashes.add(
-                            f"{commit.commit_id}:{commit.branch}"
+                            f"{commit.commit_hash}:{branch_name}"
                         )
                 
                 logger.info(
@@ -167,34 +168,36 @@ class EventProcessor:
     ) -> list:
         """
         Filter commits that are truly unprocessed.
-        
+
         This performs additional deduplication beyond the database flag.
-        
+
         Args:
             commits: List of Commit objects.
             repo: ProcessingRepository instance.
-            
+
         Returns:
             List of truly unprocessed commits.
         """
         unprocessed = []
-        
+
         for commit in commits:
-            dedup_key = f"{commit.commit_id}:{commit.branch}"
-            
+            # Get branch name from relationship
+            branch_name = commit.branch.name if commit.branch else "unknown"
+            dedup_key = f"{commit.commit_hash}:{branch_name}"
+
             # Check in-memory cache first
             if dedup_key in self._processed_commit_hashes:
-                logger.debug(f"Commit {commit.commit_id[:8]} in processed cache")
+                logger.debug(f"Commit {commit.commit_hash[:8]} in processed cache")
                 continue
-            
+
             # Check in database
-            if repo.is_commit_processed(commit.commit_id, commit.branch):
-                logger.debug(f"Commit {commit.commit_id[:8]} already processed in DB")
+            if repo.is_commit_processed(commit.commit_hash, branch_name):
+                logger.debug(f"Commit {commit.commit_hash[:8]} already processed in DB")
                 self._processed_commit_hashes.add(dedup_key)
                 continue
-            
+
             unprocessed.append(commit)
-        
+
         return unprocessed
 
     def _load_git_context(

@@ -268,7 +268,21 @@ PYTHONPATH=/Users/dmitriy/Documents/ai_concurs_backend python3 -m pytest tests/ 
 PYTHONPATH=/Users/dmitriy/Documents/ai_concurs_backend python3 -m pytest tests/test_processing.py -v
 ```
 
-**114 тестов проходят** ✅
+## 🔧 Troubleshooting
+
+Если возникли проблемы, смотрите [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
+
+### Частые проблемы:
+
+| Ошибка | Решение |
+|--------|---------|
+| `ModuleNotFoundError: No module named 'app.core'` | Заменить на `app.shared` |
+| `relation "repositories" does not exist` | Создать таблицы в БД |
+| `AttributeError: 'Commit' object has no attribute 'commit_id'` | Использовать `commit_hash` |
+| `Failed to parse commit: Missing required field: timestamp` | Добавить `timestamp` в webhook payload |
+| `401 Unauthorized` (Jira) | Использовать пароль вместо токена |
+| `403 Forbidden` (Jira) | REST API отключен, пропустить Jira интеграцию |
+| `Connection refused` (Redis/Postgres) | Запустить `docker-compose up -d` |
 
 ## Интеграция с GitLab
 
