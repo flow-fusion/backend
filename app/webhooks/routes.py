@@ -102,7 +102,7 @@ def _validate_token(token: Optional[str]) -> None:
     Raises:
         HTTPException: 403 if token is missing or invalid.
     """
-    from app.core.config import get_settings
+    from app.shared.config import get_settings
 
     settings = get_settings()
 

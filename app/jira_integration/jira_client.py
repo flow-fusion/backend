@@ -62,18 +62,7 @@ class JiraClient:
             })
         else:
             # Basic authentication with email:token
-            self.session.auth = config.auth
-            
-            # Handle Base64 encoded tokens (format: email:token encoded in Base64)
-            import base64
-            try:
-                if config.token and len(config.token) > 20 and config.token.replace('+', '').replace('/', '').replace('=', '').isalnum():
-                    decoded = base64.b64decode(config.token).decode('utf-8', errors='ignore')
-                    if ':' in decoded:
-                        _, token = decoded.split(':', 1)
-                        self.session.auth = (config.email, token)
-            except Exception:
-                pass
+            self.session.auth = (config.email, config.token)
             
             self.session.headers.update({
                 "Accept": "application/json",
@@ -92,7 +81,7 @@ class JiraClient:
 
         Args:
             method: HTTP method (GET, POST, PUT, etc.).
-            endpoint: API endpoint (relative to base URL).
+            endpoint: API endpoint (relative to base_api_url, e.g., "myself" or "issue/PROJ-123").
             json: JSON payload for request body.
             params: Query parameters.
 
@@ -102,7 +91,9 @@ class JiraClient:
         Raises:
             requests.RequestException: If all retries fail.
         """
+        # base_api_url already includes /rest/api/3, just add endpoint
         url = f"{self.base_url}/{endpoint}"
+        
         last_error: Exception | None = None
 
         for attempt in range(self.MAX_RETRIES):
@@ -113,6 +104,13 @@ class JiraClient:
                     json=json,
                     params=params,
                 )
+
+                # DEBUG: Print response info
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.debug(f"Jira API {method} {url}: {response.status_code}")
+                logger.debug(f"Response headers: {dict(response.headers)}")
+                logger.debug(f"Response body (first 500 chars): {response.text[:500]}")
 
                 # Handle rate limiting and server errors with retry
                 if response.status_code in (429, *range(500, 600)):
@@ -127,6 +125,12 @@ class JiraClient:
                     )
                     time.sleep(delay)
                     continue
+
+                # Check if response is JSON
+                content_type = response.headers.get("Content-Type", "")
+                if "application/json" not in content_type:
+                    logger.warning(f"Response is not JSON: {content_type}")
+                    logger.warning(f"Response: {response.text[:200]}")
 
                 response.raise_for_status()
 
