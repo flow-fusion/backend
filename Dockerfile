@@ -27,9 +27,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy installed packages from builder
 COPY --from=builder /root/.local /home/app/.local
 
-# Copy application code
+# Copy application code (NOT tests for production)
 COPY --chown=app:app app/ ./app/
-COPY --chown=app:app tests/ ./tests/
 COPY --chown=app:app requirements.txt .env.example ./
 
 # Set environment

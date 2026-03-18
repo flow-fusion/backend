@@ -56,6 +56,13 @@ class Settings(BaseSettings):
     JIRA_AUTO_POST: bool = True
     JIRA_USE_BEARER_AUTH: bool = False  # Use Bearer token auth instead of Basic
 
+    # AI Configuration (OPTIONAL)
+    AI_PROVIDER: str = "openrouter"  # openai, openrouter, anthropic, ollama, google
+    AI_API_KEY: str = ""
+    AI_MODEL: str = ""
+    AI_AUTO_GENERATE: bool = False  # Auto-generate AI summaries
+    OLLAMA_BASE_URL: str = "http://localhost:11434"  # For local Ollama
+
     # Logging
     LOG_LEVEL: str = "INFO"
     LOG_FORMAT: str = "json"

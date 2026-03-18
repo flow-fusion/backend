@@ -41,6 +41,26 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # Ollama (Local LLM for AI summaries) - Optional
+  ollama:
+    image: ollama/ollama:latest
+    container_name: flowfusion-ollama
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - flowfusion-internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 8G  # Ollama needs more RAM for larger models
+
   # FastAPI Webhook Server
   api:
     build:
