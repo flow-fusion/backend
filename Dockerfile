@@ -9,9 +9,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
+# Copy requirements first (better caching)
 COPY requirements.txt .
-RUN pip install --no-cache-dir --user -r requirements.txt
+
+# Install Python dependencies with verbose output
+RUN pip install --no-cache-dir --user -r requirements.txt && \
+    echo "=== Installed packages ===" && \
+    pip list | grep -E "(rq|uvicorn|fastapi)"
 
 # Runtime stage
 FROM python:3.9-slim
@@ -21,13 +25,14 @@ WORKDIR /app
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
+    curl \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --shell /bin/bash app
 
 # Copy installed packages from builder
 COPY --from=builder /root/.local /home/app/.local
 
-# Copy application code (NOT tests for production)
+# Copy application code
 COPY --chown=app:app app/ ./app/
 COPY --chown=app:app requirements.txt .env.example ./
 
@@ -41,7 +46,7 @@ USER app
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000/health', timeout=5)"
+    CMD curl -f http://localhost:8000/health || exit 1
 
-# Default command (override in docker-compose)
+# Default command
 CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
