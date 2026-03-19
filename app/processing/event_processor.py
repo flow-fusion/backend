@@ -141,6 +141,32 @@ class EventProcessor:
                         if ai_summary_text:
                             logger.info(f"AI summary generated: {len(ai_summary_text)} chars")
                             summary_input["ai_generated_summary"] = ai_summary_text
+                            
+                            # Post to Jira if enabled
+                            settings = get_settings()
+                            if settings.JIRA_AUTO_POST:
+                                try:
+                                    from app.jira_integration.jira_client import JiraClient
+                                    from app.jira_integration.config import JiraConfig
+                                    
+                                    jira_config = JiraConfig(
+                                        url=settings.JIRA_URL,
+                                        email=settings.JIRA_EMAIL,
+                                        token=settings.JIRA_TOKEN
+                                    )
+                                    jira_client = JiraClient(jira_config)
+                                    
+                                    # Format comment for Jira
+                                    jira_comment = self._format_jira_comment(summary_input, ai_summary_text)
+                                    
+                                    # Post comment
+                                    result = jira_client.add_comment(jira_issue, jira_comment)
+                                    if result:
+                                        logger.info(f"Posted comment to Jira issue {jira_issue}")
+                                    else:
+                                        logger.warning(f"Failed to post comment to Jira issue {jira_issue}")
+                                except Exception as e:
+                                    logger.error(f"Error posting to Jira: {e}")
                         else:
                             logger.warning(f"AI summary generation returned None for {jira_issue}")
 
@@ -185,6 +211,35 @@ class EventProcessor:
             logger.exception(f"Error processing event {event_id}: {str(e)}")
             self._handle_processing_error(event_id, str(e))
             return False
+
+    def _format_jira_comment(self, summary_input: dict, ai_summary: str) -> str:
+        """
+        Format AI summary as Jira comment.
+        
+        Args:
+            summary_input: Original summary input dict
+            ai_summary: Generated AI summary text
+            
+        Returns:
+            Formatted comment for Jira
+        """
+        # Create a nice formatted comment for Jira
+        jira_issue = summary_input.get("jira_issue", "Unknown")
+        authors = summary_input.get("authors", [])
+        commit_count = summary_input.get("commit_count", 0)
+        
+        comment_parts = [
+            "🤖 *AI Summary от FlowFusion*",
+            "",
+            ai_summary,
+            "",
+            f"_Сгенерировано автоматически по {commit_count} коммит(ам)_",
+        ]
+        
+        if authors:
+            comment_parts.append(f"_Авторы: {', '.join(authors)}_")
+        
+        return "\n".join(comment_parts)
 
     def _filter_truly_unprocessed(
         self,
