@@ -111,7 +111,7 @@ def test_jira_connection():
                 return True
             elif "403" in error_str:
                 print_result("Jira API", False, "No permission for TEST-1")
-                print(f"\n💡 Your board: https://jira-test.eltc.ru/secure/RapidBoard.jspa?rapidView=807")
+                print(f"\n💡 Check your Jira permissions")
                 return None
             else:
                 print_result("Jira API", False, error_str)
