@@ -62,9 +62,13 @@ class TestJiraClient:
     def test_get_issue(self, client):
         mock_response = {"key": "PROJ-123", "fields": {"summary": "Test"}}
         with patch.object(client.session, "request") as mock_request:
-            mock_request.return_value.json.return_value = mock_response
-            mock_request.return_value.status_code = 200
-            mock_request.return_value.raise_for_status = Mock()
+            mock_resp = Mock()
+            mock_resp.json.return_value = mock_response
+            mock_resp.status_code = 200
+            mock_resp.raise_for_status = Mock()
+            mock_resp.headers = {"Content-Type": "application/json"}
+            mock_resp.text = str(mock_response)
+            mock_request.return_value = mock_resp
 
             result = client.get_issue("PROJ-123")
 
@@ -75,10 +79,19 @@ class TestJiraClient:
         mock_comments = {"comments": []}
         mock_new_comment = {"id": "10001", "body": {"text": "Test comment"}}
 
+        def create_mock_response(json_data, status_code):
+            mock_resp = Mock()
+            mock_resp.json.return_value = json_data
+            mock_resp.status_code = status_code
+            mock_resp.raise_for_status = Mock()
+            mock_resp.headers = {"Content-Type": "application/json"}
+            mock_resp.text = str(json_data)
+            return mock_resp
+
         with patch.object(client.session, "request") as mock_request:
             mock_request.side_effect = [
-                Mock(json=Mock(return_value=mock_comments), status_code=200, raise_for_status=Mock()),
-                Mock(json=Mock(return_value=mock_new_comment), status_code=201, raise_for_status=Mock()),
+                create_mock_response(mock_comments, 200),
+                create_mock_response(mock_new_comment, 201),
             ]
 
             result = client.add_comment("PROJ-123", "Test comment")
@@ -95,9 +108,13 @@ class TestJiraClient:
         }
 
         with patch.object(client.session, "request") as mock_request:
-            mock_request.return_value.json.return_value = mock_comments
-            mock_request.return_value.status_code = 200
-            mock_request.return_value.raise_for_status = Mock()
+            mock_resp = Mock()
+            mock_resp.json.return_value = mock_comments
+            mock_resp.status_code = 200
+            mock_resp.raise_for_status = Mock()
+            mock_resp.headers = {"Content-Type": "application/json"}
+            mock_resp.text = str(mock_comments)
+            mock_request.return_value = mock_resp
 
             result = client.add_comment("PROJ-123", "Test comment")
 
@@ -113,9 +130,13 @@ class TestJiraClient:
         }
 
         with patch.object(client.session, "request") as mock_request:
-            mock_request.return_value.json.return_value = mock_response
-            mock_request.return_value.status_code = 200
-            mock_request.return_value.raise_for_status = Mock()
+            mock_resp = Mock()
+            mock_resp.json.return_value = mock_response
+            mock_resp.status_code = 200
+            mock_resp.raise_for_status = Mock()
+            mock_resp.headers = {"Content-Type": "application/json"}
+            mock_resp.text = str(mock_response)
+            mock_request.return_value = mock_resp
 
             result = client.get_transitions("PROJ-123")
 
@@ -130,11 +151,21 @@ class TestJiraClient:
             ]
         }
 
+        def create_mock_response(json_data=None, status_code=200):
+            mock_resp = Mock()
+            if json_data:
+                mock_resp.json.return_value = json_data
+            mock_resp.status_code = status_code
+            mock_resp.raise_for_status = Mock()
+            mock_resp.headers = {"Content-Type": "application/json"}
+            mock_resp.text = str(json_data) if json_data else ""
+            return mock_resp
+
         with patch.object(client.session, "request") as mock_request:
             mock_request.side_effect = [
-                Mock(json=Mock(return_value=mock_issue), status_code=200, raise_for_status=Mock()),
-                Mock(json=Mock(return_value=mock_transitions), status_code=200, raise_for_status=Mock()),
-                Mock(status_code=204, raise_for_status=Mock()),
+                create_mock_response(mock_issue, 200),
+                create_mock_response(mock_transitions, 200),
+                create_mock_response(None, 204),
             ]
 
             client.transition_issue("PROJ-123", "21")
@@ -150,10 +181,20 @@ class TestJiraClient:
             ]
         }
 
+        def create_mock_response(json_data=None, status_code=200):
+            mock_resp = Mock()
+            if json_data:
+                mock_resp.json.return_value = json_data
+            mock_resp.status_code = status_code
+            mock_resp.raise_for_status = Mock()
+            mock_resp.headers = {"Content-Type": "application/json"}
+            mock_resp.text = str(json_data) if json_data else ""
+            return mock_resp
+
         with patch.object(client.session, "request") as mock_request:
             mock_request.side_effect = [
-                Mock(json=Mock(return_value=mock_issue), status_code=200, raise_for_status=Mock()),
-                Mock(json=Mock(return_value=mock_transitions), status_code=200, raise_for_status=Mock()),
+                create_mock_response(mock_issue, 200),
+                create_mock_response(mock_transitions, 200),
             ]
 
             client.transition_issue("PROJ-123", "21")
@@ -163,10 +204,20 @@ class TestJiraClient:
 
     def test_retry_on_429(self, client):
         """Test retry logic on rate limit response."""
+        def create_mock_response(json_data=None, status_code=200, headers=None):
+            mock_resp = Mock()
+            if json_data:
+                mock_resp.json.return_value = json_data
+            mock_resp.status_code = status_code
+            mock_resp.raise_for_status = Mock()
+            mock_resp.headers = headers or {"Content-Type": "application/json"}
+            mock_resp.text = str(json_data) if json_data else ""
+            return mock_resp
+
         with patch.object(client.session, "request") as mock_request:
             mock_request.side_effect = [
-                Mock(status_code=429, headers={"Retry-After": "0"}, raise_for_status=Mock()),
-                Mock(json=Mock(return_value={"key": "PROJ-123"}), status_code=200, raise_for_status=Mock()),
+                create_mock_response(None, status_code=429, headers={"Retry-After": "0"}),
+                create_mock_response({"key": "PROJ-123"}, status_code=200),
             ]
 
             result = client.get_issue("PROJ-123")
@@ -176,10 +227,23 @@ class TestJiraClient:
 
     def test_retry_on_5xx(self, client):
         """Test retry logic on server error response."""
+        def create_mock_response(json_data=None, status_code=200, headers=None, raise_error=None):
+            mock_resp = Mock()
+            if json_data:
+                mock_resp.json.return_value = json_data
+            mock_resp.status_code = status_code
+            mock_resp.headers = headers or {"Content-Type": "application/json"}
+            mock_resp.text = str(json_data) if json_data else ""
+            if raise_error:
+                mock_resp.raise_for_status = Mock(side_effect=raise_error)
+            else:
+                mock_resp.raise_for_status = Mock()
+            return mock_resp
+
         with patch.object(client.session, "request") as mock_request:
             mock_request.side_effect = [
-                Mock(status_code=503, headers={}, raise_for_status=Mock(side_effect=Exception("503"))),
-                Mock(json=Mock(return_value={"key": "PROJ-123"}), status_code=200, raise_for_status=Mock()),
+                create_mock_response(None, status_code=503, raise_error=Exception("503")),
+                create_mock_response({"key": "PROJ-123"}, status_code=200),
             ]
 
             result = client.get_issue("PROJ-123")
@@ -191,9 +255,13 @@ class TestJiraClient:
         mock_worklog = {"id": "10001", "timeSpent": "1h"}
 
         with patch.object(client.session, "request") as mock_request:
-            mock_request.return_value.json.return_value = mock_worklog
-            mock_request.return_value.status_code = 201
-            mock_request.return_value.raise_for_status = Mock()
+            mock_resp = Mock()
+            mock_resp.json.return_value = mock_worklog
+            mock_resp.status_code = 201
+            mock_resp.raise_for_status = Mock()
+            mock_resp.headers = {"Content-Type": "application/json"}
+            mock_resp.text = str(mock_worklog)
+            mock_request.return_value = mock_resp
 
             result = client.add_worklog("PROJ-123", "1h", "Test worklog")
 
