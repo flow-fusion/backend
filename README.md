@@ -61,6 +61,7 @@ curl http://localhost:8000/health
 | [🤖 Ollama Setup](docs/ollama-setup.md) | Локальная AI-модель |
 | [🔧 Troubleshooting](docs/troubleshooting.md) | Решение проблем |
 | [📝 System Prompt](docs/system-prompt.md) | Промпт для генерации саммари |
+| [🧪 Testing](docs/testing.md) | Запуск и структура тестов |
 
 ## Конфигурация
 
@@ -142,16 +143,6 @@ python -m app.workers.worker --direct &
    ```
    AI Summary ──► JiraClient ──► Comment + Transition
    ```
-
-## Тестирование
-
-```bash
-# Все тесты
-PYTHONPATH=/Users/dmitriy/Documents/ai_concurs_backend python3 -m pytest tests/ -v
-
-# С покрытием
-PYTHONPATH=/Users/dmitriy/Documents/ai_concurs_backend python3 -m pytest tests/ --cov=app
-```
 
 ## Интеграция с GitLab
 
