@@ -36,6 +36,7 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 # Copy application code
 COPY --chown=app:app app/ ./app/
 COPY --chown=app:app requirements.txt .env.example ./
+COPY --chown=app:app PROMPT.md ./PROMPT.md
 
 # Set environment
 ENV PYTHONPATH=/app \

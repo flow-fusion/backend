@@ -214,6 +214,56 @@ class AIService:
         settings = get_settings()
         self.settings = settings
         self.client = self._create_client()
+        self.system_prompt = self._load_system_prompt()
+    
+    def _load_system_prompt(self) -> str:
+        """
+        Load system prompt from PROMPT.md file.
+        
+        Returns:
+            System prompt text
+        """
+        import os
+        
+        # Try multiple paths (for Docker and local development)
+        possible_paths = [
+            "/app/PROMPT.md",  # Docker root
+            os.path.join(os.path.dirname(__file__), "..", "..", "..", "PROMPT.md"),  # Relative
+            "/Users/dmitriy/Documents/ai_concurs_backend/PROMPT.md",  # Local dev
+        ]
+        
+        for prompt_path in possible_paths:
+            try:
+                if os.path.exists(prompt_path):
+                    with open(prompt_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                        
+                    # Extract system prompt from markdown
+                    import re
+                    match = re.search(r'## 🤖 Системный промпт\n\n```\n(.*?)```', content, re.DOTALL)
+                    if match:
+                        logger.info(f"Loaded system prompt from {prompt_path}")
+                        return match.group(1).strip()
+            except Exception as e:
+                logger.debug(f"Failed to load from {prompt_path}: {e}")
+                continue
+        
+        # Default fallback
+        logger.warning("Using default system prompt")
+        return """Ты — помощник для генерации профессиональных прогресс-апдейтов для Jira задач.
+
+Твоя задача:
+- Создать краткое резюме выполненной работы
+- Использовать деловой стиль
+- Фокусироваться на результатах, а не процессе
+- Избегать излишних технических деталей
+- Писать на русском языке
+
+Формат:
+- 3-5 предложений
+- Начинать с общего описания работы
+- Упоминать ключевые изменения
+- Завершать общим статусом"""
     
     def _create_client(self) -> Optional[AIClient]:
         """Create AI client based on configuration."""
@@ -269,11 +319,10 @@ class AIService:
             return None
         
         prompt = self._format_prompt(summary_input)
-        system_prompt = self._get_system_prompt()
         
         logger.info(f"Generating AI summary for Jira issue {summary_input.get('jira_issue', 'Unknown')}")
         
-        summary = self.client.generate(prompt, system_prompt)
+        summary = self.client.generate(prompt, self.system_prompt)
         
         if summary:
             logger.info(f"AI summary generated: {len(summary)} chars")
@@ -336,23 +385,6 @@ class AIService:
         prompt_parts.append("- Избегай технических деталей")
         
         return "\n".join(prompt_parts)
-    
-    def _get_system_prompt(self) -> str:
-        """Get system prompt for AI."""
-        return """Ты — помощник для генерации профессиональных прогресс-апдейтов для Jira задач.
-
-Твоя задача:
-- Создать краткое резюме выполненной работы
-- Использовать деловой стиль
-- Фокусироваться на результатах, а не процессе
-- Избегать излишних технических деталей
-- Писать на русском языке
-
-Формат:
-- 3-5 предложений
-- Начинать с общего описания работы
-- Упоминать ключевые изменения
-- Завершать общим статусом"""
 
 
 # Convenience function for direct use

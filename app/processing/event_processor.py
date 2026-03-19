@@ -224,13 +224,10 @@ class EventProcessor:
             Formatted comment for Jira
         """
         # Create a nice formatted comment for Jira
-        jira_issue = summary_input.get("jira_issue", "Unknown")
         authors = summary_input.get("authors", [])
         commit_count = summary_input.get("commit_count", 0)
         
         comment_parts = [
-            "🤖 *AI Summary от FlowFusion*",
-            "",
             ai_summary,
             "",
             f"_Сгенерировано автоматически по {commit_count} коммит(ам)_",
