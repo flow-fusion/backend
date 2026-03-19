@@ -76,12 +76,13 @@ services:
       - REDIS_PORT=6379
       - GITLAB_WEBHOOK_SECRET=test_secret_for_local_dev
       - GITLAB_API_TOKEN=${GITLAB_API_TOKEN:-}
-      - JIRA_URL=${JIRA_URL:-}
-      - JIRA_EMAIL=${JIRA_EMAIL:-}
-      - JIRA_TOKEN=${JIRA_TOKEN:-}
+      - JIRA_URL=${JIRA_URL:-https://jira-test.eltc.ru}
+      - JIRA_EMAIL=${JIRA_EMAIL:-eftifanov.dv}
+      - JIRA_TOKEN=${JIRA_TOKEN:-DimaKruto230}
+      - JIRA_AUTO_POST=${JIRA_AUTO_POST:-true}
       - AI_PROVIDER=ollama
       - AI_MODEL=llama3.2
-      - AI_AUTO_GENERATE=true
+      - AI_AUTO_GENERATE=${AI_AUTO_GENERATE:-true}
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - LOG_LEVEL=DEBUG
     depends_on:
@@ -108,12 +109,13 @@ services:
       - REDIS_PORT=6379
       - GITLAB_WEBHOOK_SECRET=test_secret_for_local_dev
       - GITLAB_API_TOKEN=${GITLAB_API_TOKEN:-}
-      - JIRA_URL=${JIRA_URL:-}
-      - JIRA_EMAIL=${JIRA_EMAIL:-}
-      - JIRA_TOKEN=${JIRA_TOKEN:-}
+      - JIRA_URL=${JIRA_URL:-https://jira-test.eltc.ru}
+      - JIRA_EMAIL=${JIRA_EMAIL:-eftifanov.dv}
+      - JIRA_TOKEN=${JIRA_TOKEN:-DimaKruto230}
+      - JIRA_AUTO_POST=${JIRA_AUTO_POST:-true}
       - AI_PROVIDER=ollama
       - AI_MODEL=llama3.2
-      - AI_AUTO_GENERATE=true
+      - AI_AUTO_GENERATE=${AI_AUTO_GENERATE:-true}
       - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - LOG_LEVEL=DEBUG
     depends_on:

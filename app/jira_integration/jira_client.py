@@ -195,11 +195,12 @@ class JiraClient:
                     logger.info("Duplicate comment found for %s, skipping", issue_key)
                     return None
 
-        # Add new comment
+        # Add new comment (API v2 format)
+        # Jira Server/Data Center uses simple "body" field, not rich text
         result = self._request(
             "POST",
             f"issue/{issue_key}/comment",
-            json={"body": {"type": "text", "text": text}},
+            json={"body": text},
         )
 
         if result:
