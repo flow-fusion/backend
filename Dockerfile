@@ -12,8 +12,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Copy requirements first (better caching)
 COPY requirements.txt .
 
-# Install Python dependencies with verbose output
-RUN pip install --no-cache-dir --user -r requirements.txt && \
+# Install Python dependencies SYSTEM-WIDE (not --user)
+RUN pip install --no-cache-dir -r requirements.txt && \
     echo "=== Installed packages ===" && \
     pip list | grep -E "(rq|uvicorn|fastapi)"
 
@@ -29,16 +29,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --create-home --shell /bin/bash app
 
-# Copy installed packages from builder
-COPY --from=builder /root/.local /home/app/.local
+# Copy installed packages from builder (system-wide location)
+COPY --from=builder /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.9/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
 
 # Copy application code
 COPY --chown=app:app app/ ./app/
 COPY --chown=app:app requirements.txt .env.example ./
 
 # Set environment
-ENV PATH=/home/app/.local/bin:$PATH \
-    PYTHONPATH=/app \
+ENV PYTHONPATH=/app \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 
