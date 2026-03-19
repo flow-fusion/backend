@@ -81,12 +81,16 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - GITLAB_WEBHOOK_SECRET=${GITLAB_WEBHOOK_SECRET:?GITLAB_WEBHOOK_SECRET is required}
-      - GITLAB_API_TOKEN=${GITLAB_API_TOKEN:?GITLAB_API_TOKEN is required}
+      - GITLAB_API_TOKEN=${GITLAB_API_TOKEN:-}
       - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
-      - JIRA_URL=${JIRA_URL:?JIRA_URL is required}
-      - JIRA_EMAIL=${JIRA_EMAIL:?JIRA_EMAIL is required}
-      - JIRA_TOKEN=${JIRA_TOKEN:?JIRA_TOKEN is required}
-      - JIRA_AUTO_POST=${JIRA_AUTO_POST:-true}
+      - JIRA_URL=${JIRA_URL:-}
+      - JIRA_EMAIL=${JIRA_EMAIL:-}
+      - JIRA_TOKEN=${JIRA_TOKEN:-}
+      - JIRA_AUTO_POST=${JIRA_AUTO_POST:-false}
+      - AI_PROVIDER=${AI_PROVIDER:-ollama}
+      - AI_MODEL=${AI_MODEL:-llama3.2}
+      - AI_AUTO_GENERATE=${AI_AUTO_GENERATE:-true}
+      - OLLAMA_BASE_URL=http://ollama:11434
       - LOG_LEVEL=INFO
       - LOG_FORMAT=json
     depends_on:
@@ -94,6 +98,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_started
     networks:
       - flowfusion-internal
       - flowfusion-public
@@ -121,12 +127,16 @@ services:
       - REDIS_PORT=6379
       - REDIS_PASSWORD=${REDIS_PASSWORD:-}
       - GITLAB_WEBHOOK_SECRET=${GITLAB_WEBHOOK_SECRET}
-      - GITLAB_API_TOKEN=${GITLAB_API_TOKEN}
+      - GITLAB_API_TOKEN=${GITLAB_API_TOKEN:-}
       - GITLAB_BASE_URL=${GITLAB_BASE_URL:-https://gitlab.com}
-      - JIRA_URL=${JIRA_URL}
-      - JIRA_EMAIL=${JIRA_EMAIL}
-      - JIRA_TOKEN=${JIRA_TOKEN}
-      - JIRA_AUTO_POST=${JIRA_AUTO_POST:-true}
+      - JIRA_URL=${JIRA_URL:-}
+      - JIRA_EMAIL=${JIRA_EMAIL:-}
+      - JIRA_TOKEN=${JIRA_TOKEN:-}
+      - JIRA_AUTO_POST=${JIRA_AUTO_POST:-false}
+      - AI_PROVIDER=${AI_PROVIDER:-ollama}
+      - AI_MODEL=${AI_MODEL:-llama3.2}
+      - AI_AUTO_GENERATE=${AI_AUTO_GENERATE:-true}
+      - OLLAMA_BASE_URL=http://ollama:11434
       - LOG_LEVEL=INFO
       - LOG_FORMAT=json
     depends_on:
@@ -134,11 +144,13 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_started
     networks:
       - flowfusion-internal
     restart: unless-stopped
     deploy:
-      replicas: 2  # Scale workers based on load
+      replicas: 2  # Scale workers horizontally
       resources:
         limits:
           cpus: '1'
@@ -151,6 +163,8 @@ volumes:
   postgres_data:
     driver: local
   redis_data:
+    driver: local
+  ollama_data:
     driver: local
 
 networks:
