@@ -36,6 +36,24 @@ services:
       timeout: 5s
       retries: 5
 
+  # Ollama (Local LLM for AI summaries)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: flowfusion-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 4G
+
   # FastAPI Webhook Server
   api:
     build:
@@ -56,17 +74,23 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/flowfusion
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - GITLAB_WEBHOOK_SECRET=dev_secret_change_in_production
+      - GITLAB_WEBHOOK_SECRET=test_secret_for_local_dev
       - GITLAB_API_TOKEN=${GITLAB_API_TOKEN:-}
       - JIRA_URL=${JIRA_URL:-}
       - JIRA_EMAIL=${JIRA_EMAIL:-}
       - JIRA_TOKEN=${JIRA_TOKEN:-}
+      - AI_PROVIDER=ollama
+      - AI_MODEL=llama3.2
+      - AI_AUTO_GENERATE=true
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - LOG_LEVEL=DEBUG
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_started
 
   # Background Worker
   worker:
@@ -82,20 +106,27 @@ services:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/flowfusion
       - REDIS_HOST=redis
       - REDIS_PORT=6379
-      - GITLAB_WEBHOOK_SECRET=dev_secret_change_in_production
+      - GITLAB_WEBHOOK_SECRET=test_secret_for_local_dev
       - GITLAB_API_TOKEN=${GITLAB_API_TOKEN:-}
       - JIRA_URL=${JIRA_URL:-}
       - JIRA_EMAIL=${JIRA_EMAIL:-}
       - JIRA_TOKEN=${JIRA_TOKEN:-}
+      - AI_PROVIDER=ollama
+      - AI_MODEL=llama3.2
+      - AI_AUTO_GENERATE=true
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
       - LOG_LEVEL=DEBUG
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      ollama:
+        condition: service_started
 
 volumes:
   postgres_data:
+  ollama_data:
 
 networks:
   default:

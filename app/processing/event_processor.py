@@ -5,10 +5,12 @@ from typing import Optional, Set
 from sqlalchemy.orm import Session
 from app.shared.database import session_scope
 from app.shared.logging_config import get_logger
+from app.shared.config import get_settings
 from app.processing.event_queue_service import EventQueueService
 from app.processing.commit_aggregator import CommitAggregator
 from app.processing.ai_summary_builder import AISummaryBuilder
 from app.processing.git_context_service import GitContextService, GitContext
+from app.processing.ai_service import AIService
 from app.shared.processing_repository import ProcessingRepository
 from app.shared.models import Event
 
@@ -24,6 +26,7 @@ class EventProcessor:
     - Deduplicate events
     - Group commits by Jira issue
     - Create AI summaries with Git context
+    - Generate AI text using LLM
     - Mark events and commits as processed
     - Handle errors and retries
     """
@@ -34,11 +37,22 @@ class EventProcessor:
         commit_aggregator: Optional[CommitAggregator] = None,
         ai_summary_builder: Optional[AISummaryBuilder] = None,
         git_context_service: Optional[GitContextService] = None,
+        ai_service: Optional[AIService] = None,
     ):
         self.queue_service = queue_service or EventQueueService()
         self.commit_aggregator = commit_aggregator or CommitAggregator()
         self.ai_summary_builder = ai_summary_builder or AISummaryBuilder()
         self.git_context_service = git_context_service
+        
+        # Initialize AI service if enabled
+        settings = get_settings()
+        if settings.AI_AUTO_GENERATE:
+            self.ai_service = ai_service or AIService()
+            logger.info(f"AI service initialized with provider: {settings.AI_PROVIDER}")
+        else:
+            self.ai_service = None
+            logger.info("AI auto-generation disabled (set AI_AUTO_GENERATE=true to enable)")
+        
         self._processed_commit_hashes: Set[str] = set()
 
     def process_event(self, event_id: int) -> bool:
@@ -118,6 +132,17 @@ class EventProcessor:
                     summary_input = self.ai_summary_builder.build_summary_input(
                         jira_issue, issue_commits, git_context
                     )
+
+                    # Generate AI summary if enabled
+                    if self.ai_service:
+                        logger.info(f"Generating AI summary for Jira issue {jira_issue}")
+                        ai_summary_text = self.ai_service.generate_summary(summary_input)
+                        
+                        if ai_summary_text:
+                            logger.info(f"AI summary generated: {len(ai_summary_text)} chars")
+                            summary_input["ai_generated_summary"] = ai_summary_text
+                        else:
+                            logger.warning(f"AI summary generation returned None for {jira_issue}")
 
                     # Save AI summary to database
                     repo.save_ai_summary({
