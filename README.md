@@ -60,7 +60,6 @@ curl http://localhost:8000/health
 | [🚀 Deployment](docs/deployment.md) | Развёртывание в production |
 | [🤖 Ollama Setup](docs/ollama-setup.md) | Локальная AI-модель |
 | [🔧 Troubleshooting](docs/troubleshooting.md) | Решение проблем |
-| [📝 System Prompt](docs/system-prompt.md) | Промпт для генерации саммари |
 | [🧪 Testing](docs/testing.md) | Запуск и структура тестов |
 
 ## Конфигурация
