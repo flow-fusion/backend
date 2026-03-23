@@ -42,13 +42,20 @@ class EventProcessor:
         self.queue_service = queue_service or EventQueueService()
         self.commit_aggregator = commit_aggregator or CommitAggregator()
         self.ai_summary_builder = ai_summary_builder or AISummaryBuilder()
-        self.git_context_service = git_context_service
+        
+        # Initialize Git context service if GitLab token is available
+        settings = get_settings()
+        if settings.GITLAB_API_TOKEN:
+            self.git_context_service = git_context_service or GitContextService()
+            logger.info("Git context enabled (will load diff from GitLab API)")
+        else:
+            self.git_context_service = None
+            logger.info("Git context disabled (set GITLAB_API_TOKEN to enable)")
         
         # Initialize AI service if enabled
-        settings = get_settings()
         if settings.AI_AUTO_GENERATE:
             self.ai_service = ai_service or AIService()
-            logger.info(f"AI service initialized with provider: {settings.AI_PROVIDER}")
+            logger.info(f"AI service enabled with provider: {settings.AI_PROVIDER}")
         else:
             self.ai_service = None
             logger.info("AI auto-generation disabled (set AI_AUTO_GENERATE=true to enable)")
@@ -81,13 +88,13 @@ class EventProcessor:
                 if event.processed:
                     logger.info(f"Event {event_id} already processed, skipping")
                     return True
-                
-                # Check event type - only process push events for now
-                if event.event_type != "push":
+
+                # Check event type - process push and merge_request events
+                if event.event_type not in ["push", "merge_request"]:
                     logger.info(f"Skipping event {event_id} with type {event.event_type}")
                     repo.mark_event_as_processed(event_id)
                     return True
-                
+
                 # Get unprocessed commits
                 commits = repo.get_unprocessed_commits_for_event(event_id)
                 logger.info(f"Found {len(commits)} commits for event {event_id}")
@@ -128,9 +135,12 @@ class EventProcessor:
                     # Load Git context for this group of commits
                     git_context = self._load_git_context(issue_commits)
 
-                    # Build AI summary input with Git context
+                    # Extract MR description from event payload
+                    mr_description = self._extract_mr_description_from_event(event_id)
+
+                    # Build AI summary input with Git context and MR description
                     summary_input = self.ai_summary_builder.build_summary_input(
-                        jira_issue, issue_commits, git_context
+                        jira_issue, issue_commits, git_context, mr_description
                     )
 
                     # Generate AI summary if enabled
@@ -159,8 +169,11 @@ class EventProcessor:
                                     # Format comment for Jira
                                     jira_comment = self._format_jira_comment(summary_input, ai_summary_text)
                                     
-                                    # Post comment
-                                    result = jira_client.add_comment(jira_issue, jira_comment)
+                                    # Extract reviewers from event payload if available
+                                    reviewers = self._extract_reviewers_from_event(event_id)
+                                    
+                                    # Post comment with reviewer mentions
+                                    result = jira_client.add_comment(jira_issue, jira_comment, reviewers)
                                     if result:
                                         logger.info(f"Posted comment to Jira issue {jira_issue}")
                                     else:
@@ -235,8 +248,80 @@ class EventProcessor:
         
         if authors:
             comment_parts.append(f"_Авторы: {', '.join(authors)}_")
-        
+
         return "\n".join(comment_parts)
+
+    def _extract_reviewers_from_event(self, event_id: int) -> list:
+        """
+        Extract reviewers from event payload.
+        
+        Args:
+            event_id: Event database ID
+            
+        Returns:
+            List of reviewer dicts with username field
+        """
+        try:
+            from app.shared.database import session_scope
+            from app.shared.models import Event
+            import json
+            
+            with session_scope() as session:
+                event = session.query(Event).filter(Event.id == event_id).first()
+                if not event:
+                    return []
+                
+                payload = json.loads(event.payload_json)
+                
+                # Check for MR reviewers
+                object_attributes = payload.get("object_attributes", {})
+                reviewers = object_attributes.get("reviewers", [])
+                
+                if reviewers:
+                    logger.info(f"Found {len(reviewers)} reviewers for event {event_id}")
+                    return reviewers
+                
+                return []
+                
+        except Exception as e:
+            logger.debug(f"Failed to extract reviewers: {e}")
+            return []
+
+    def _extract_mr_description_from_event(self, event_id: int) -> Optional[str]:
+        """
+        Extract Merge Request description from event payload.
+        
+        Args:
+            event_id: Event database ID
+            
+        Returns:
+            MR description or None
+        """
+        try:
+            from app.shared.database import session_scope
+            from app.shared.models import Event
+            import json
+            
+            with session_scope() as session:
+                event = session.query(Event).filter(Event.id == event_id).first()
+                if not event:
+                    return None
+                
+                payload = json.loads(event.payload_json)
+                
+                # Check for MR description
+                object_attributes = payload.get("object_attributes", {})
+                description = object_attributes.get("description", "")
+                
+                if description:
+                    logger.debug(f"Found MR description for event {event_id}")
+                    return description
+                
+                return None
+                
+        except Exception as e:
+            logger.debug(f"Failed to extract MR description: {e}")
+            return None
 
     def _filter_truly_unprocessed(
         self,
@@ -288,7 +373,7 @@ class EventProcessor:
             commits: List of Commit objects.
             
         Returns:
-            GitContext or None if loading fails or service not configured.
+            GitContext or None if not configured or loading fails.
         """
         if not self.git_context_service:
             logger.debug("Git context service not configured, skipping Git context")
@@ -298,11 +383,25 @@ class EventProcessor:
             return None
         
         try:
-            # Run async Git context loading in a sync context
+            # Get repository name from first commit's branch relationship
+            repository_name = None
+            if commits[0].branch and hasattr(commits[0].branch, 'repository'):
+                repository_name = commits[0].branch.repository.name
+            
+            # Load context from GitLab API
             git_context = self._run_async(
-                self.git_context_service.load_context(commits)
+                self.git_context_service.load_context(commits, repository_name)
             )
+            
+            if git_context:
+                logger.info(
+                    f"Loaded Git context: {len(git_context.changed_files)} files, "
+                    f"{len(git_context.diff_summary)} diff summaries, "
+                    f"MR: {git_context.merge_request.title if git_context.merge_request else 'None'}"
+                )
+            
             return git_context
+            
         except Exception as e:
             logger.warning(f"Failed to load Git context (continuing without): {e}")
             return None

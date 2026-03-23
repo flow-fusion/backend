@@ -28,6 +28,7 @@ class AISummaryBuilder:
         jira_issue: str,
         commits: List[Commit],
         git_context: Optional[GitContext] = None,
+        mr_description: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Build structured input for AI summarization.
@@ -119,7 +120,8 @@ class AISummaryBuilder:
             summary_input["changed_files"] = []
             summary_input["diff_summary"] = []
             summary_input["merge_request_title"] = ""
-            summary_input["merge_request_description"] = ""
+            # Use mr_description if provided (from event payload)
+            summary_input["merge_request_description"] = mr_description or ""
             summary_input["merge_request_author"] = ""
 
         logger.info(
