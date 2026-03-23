@@ -138,18 +138,42 @@ class EventProcessor:
                     # Extract MR description from event payload
                     mr_description = self._extract_mr_description_from_event(event_id)
 
+                    # DEBUG: Print full info about what's being sent to AI
+                    logger.info("=" * 80)
+                    logger.info(f"📋 AI INPUT DATA FOR {jira_issue}")
+                    logger.info("=" * 80)
+                    logger.info(f"Jira Issue: {jira_issue}")
+                    logger.info(f"MR Description: {mr_description[:500] if mr_description else 'None'}...")
+                    logger.info(f"Commits: {len(issue_commits)}")
+                    for i, commit in enumerate(issue_commits, 1):
+                        logger.info(f"  Commit {i}: {commit.message[:100]}")
+                    if git_context:
+                        logger.info(f"Changed files: {git_context.changed_files}")
+                        logger.info(f"Diff summary: {git_context.diff_summary}")
+                        if git_context.merge_request:
+                            logger.info(f"MR Title: {git_context.merge_request.title}")
+                            logger.info(f"MR Author: {git_context.merge_request.author}")
+                    logger.info("=" * 80)
+
                     # Build AI summary input with Git context and MR description
                     summary_input = self.ai_summary_builder.build_summary_input(
                         jira_issue, issue_commits, git_context, mr_description
                     )
+                    
+                    # Add reviewers to summary_input for AI prompt
+                    reviewers = self._extract_reviewers_from_event(event_id)
+                    if reviewers:
+                        summary_input["reviewers"] = reviewers
 
                     # Generate AI summary if enabled
                     if self.ai_service:
                         logger.info(f"Generating AI summary for Jira issue {jira_issue}")
+                        logger.info(f"Summary input reviewers: {summary_input.get('reviewers', [])}")
                         ai_summary_text = self.ai_service.generate_summary(summary_input)
-                        
-                        if ai_summary_text:
-                            logger.info(f"AI summary generated: {len(ai_summary_text)} chars")
+
+                        if ai_summary_text and len(ai_summary_text.strip()) > 10:
+                            logger.info(f"✅ AI summary generated: {len(ai_summary_text)} chars")
+                            logger.debug(f"Summary preview: {ai_summary_text[:200]}...")
                             summary_input["ai_generated_summary"] = ai_summary_text
                             
                             # Post to Jira if enabled
@@ -172,16 +196,28 @@ class EventProcessor:
                                     # Extract reviewers from event payload if available
                                     reviewers = self._extract_reviewers_from_event(event_id)
                                     
+                                    # DEBUG: Print the comment that will be posted
+                                    logger.info("=" * 80)
+                                    logger.info("📋 JIRA COMMENT TO BE POSTED")
+                                    logger.info("=" * 80)
+                                    logger.info(jira_comment)
+                                    if reviewers:
+                                        logger.info(f"\nReviewers to mention: {[r.get('username') for r in reviewers]}")
+                                    logger.info("=" * 80)
+                                    
                                     # Post comment with reviewer mentions
                                     result = jira_client.add_comment(jira_issue, jira_comment, reviewers)
                                     if result:
-                                        logger.info(f"Posted comment to Jira issue {jira_issue}")
+                                        logger.info(f"✅ Posted comment to Jira issue {jira_issue}")
                                     else:
-                                        logger.warning(f"Failed to post comment to Jira issue {jira_issue}")
+                                        logger.warning(f"⚠️ Failed to post comment to Jira issue {jira_issue}")
                                 except Exception as e:
-                                    logger.error(f"Error posting to Jira: {e}")
+                                    logger.error(f"❌ Error posting to Jira: {e}")
+                                    logger.exception("Stack trace:")
                         else:
-                            logger.warning(f"AI summary generation returned None for {jira_issue}")
+                            logger.warning(f"⚠️ AI returned empty or too short summary for {jira_issue}")
+                            logger.debug(f"Raw AI response: {repr(ai_summary_text)}")
+                            summary_input["ai_generated_summary"] = ""
 
                     # Save AI summary to database
                     repo.save_ai_summary({
@@ -205,21 +241,21 @@ class EventProcessor:
                         self._processed_commit_hashes.add(
                             f"{commit.commit_hash}:{branch_name}"
                         )
-                
+
                 logger.info(
                     f"Created AI summary batch for event {event_id}: "
                     f"{summaries_created} summaries, {len(unprocessed_commits)} commits"
                 )
-                
+
                 # Mark event as processed
                 repo.mark_event_as_processed(event_id)
-                
+
             # Mark as processed in queue
             self.queue_service.mark_event_processed(event_id)
-            
+
             logger.info(f"Successfully processed event {event_id}")
             return True
-            
+
         except Exception as e:
             logger.exception(f"Error processing event {event_id}: {str(e)}")
             self._handle_processing_error(event_id, str(e))
@@ -236,20 +272,9 @@ class EventProcessor:
         Returns:
             Formatted comment for Jira
         """
-        # Create a nice formatted comment for Jira
-        authors = summary_input.get("authors", [])
-        commit_count = summary_input.get("commit_count", 0)
-        
-        comment_parts = [
-            ai_summary,
-            "",
-            f"_Сгенерировано автоматически по {commit_count} коммит(ам)_",
-        ]
-        
-        if authors:
-            comment_parts.append(f"_Авторы: {', '.join(authors)}_")
-
-        return "\n".join(comment_parts)
+        # AI summary already includes reviewer mention at the end
+        # Just return it as-is
+        return ai_summary.strip()
 
     def _extract_reviewers_from_event(self, event_id: int) -> list:
         """

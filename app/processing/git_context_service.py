@@ -99,6 +99,7 @@ class GitContextService:
         self.api_token = gitlab_api_token or settings.GITLAB_API_TOKEN
         self.timeout = settings.GITLAB_API_TIMEOUT
         self.retry_count = settings.GITLAB_API_RETRY_COUNT
+        self.project_id_cache: Dict[str, str] = {}  # Cache project ID lookups
 
         self._client = http_client
         self._owns_client = http_client is None
@@ -126,12 +127,9 @@ class GitContextService:
         """Get headers for GitLab API requests."""
         headers = {"Content-Type": "application/json"}
         if self.api_token:
-            headers["Authorization"] = f"Bearer {self.api_token}"
-        elif hasattr(self, "_client") and self._client:
-            # Check if token is in environment
-            import os
-            if token := os.getenv("GITLAB_API_TOKEN"):
-                headers["Authorization"] = f"Bearer {token}"
+            # GitLab uses PRIVATE-TOKEN header for authentication
+            headers["PRIVATE-TOKEN"] = self.api_token
+            logger.debug(f"Using GitLab API token for {self.base_url}")
         return headers
 
     def _get_project_id(self, repository: str) -> Optional[str]:
