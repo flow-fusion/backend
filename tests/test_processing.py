@@ -200,3 +200,30 @@ class TestProcessingRepository:
 
         assert result == 3
         mock_filter.update.assert_called_once_with({"processed": True}, synchronize_session=False)
+
+
+def test_apply_jira_auto_transition(monkeypatch):
+    """Test that EventProcessor delegates auto transition invocation to JiraClient."""
+    from app.processing.event_processor import EventProcessor
+
+    processor = EventProcessor()
+    mock_jira_client = Mock()
+
+    processor._apply_jira_auto_transition(mock_jira_client, "PROJ-123")
+
+    mock_jira_client.auto_transition_to_in_progress_then_review.assert_called_once_with("PROJ-123")
+
+
+def test_apply_jira_auto_transition_disabled(monkeypatch):
+    """Test no call when JIRA_AUTO_TRANSITION is disabled."""
+    from app.processing.event_processor import EventProcessor
+    from app.shared.config import Settings
+
+    monkeypatch.setattr(Settings, 'JIRA_AUTO_TRANSITION', False)
+
+    processor = EventProcessor()
+    mock_jira_client = Mock()
+
+    processor._apply_jira_auto_transition(mock_jira_client, "PROJ-123")
+
+    mock_jira_client.auto_transition_to_in_progress_then_review.assert_not_called()

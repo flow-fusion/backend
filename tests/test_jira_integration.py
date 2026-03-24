@@ -267,6 +267,39 @@ class TestJiraClient:
 
             assert result == mock_worklog
 
+    def test_auto_transition_to_in_progress_then_review(self, client, monkeypatch):
+        client.get_issue = Mock(side_effect=[
+            {"fields": {"status": {"name": "Создано"}}},
+            {"fields": {"status": {"name": "Планирование"}}},
+            {"fields": {"status": {"name": "В работе"}}},
+            {"fields": {"status": {"name": "В работе"}}},
+        ])
+
+        client.get_transitions = Mock(side_effect=[
+            {"transitions": [{"id": "11", "name": "Планирование", "to": {"name": "Планирование"}}]},
+            {"transitions": [{"id": "21", "name": "В работе", "to": {"name": "В работе"}}]},
+            {"transitions": [{"id": "31", "name": "На ревью", "to": {"name": "На ревью"}}]},
+        ])
+
+        client.transition_issue = Mock()
+
+        client.auto_transition_to_in_progress_then_review("PROJ-123")
+
+        # Expect at least one call to transition_issue for path to in progress and then to review
+        assert client.transition_issue.call_count == 2
+
+    def test_auto_transition_to_in_progress_already_working(self, client):
+        client.get_issue = Mock(return_value={"fields": {"status": {"name": "В работе"}}})
+        client.get_transitions = Mock(return_value=[
+            {"id": "31", "name": "На ревью", "to": {"name": "На ревью"}},
+        ])
+        client.transition_issue = Mock()
+
+        client.auto_transition_to_in_progress_then_review("PROJ-123")
+
+        # should not transition in-progress (already in progress), but should attempt review
+        client.transition_issue.assert_called_once_with("PROJ-123", "31")
+
 
 class TestMRProcessor:
     """Tests for MRProcessor class."""
