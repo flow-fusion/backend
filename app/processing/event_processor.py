@@ -82,13 +82,13 @@ class EventProcessor:
                 if event.processed:
                     logger.info(f"Event {event_id} already processed, skipping")
                     return True
-                
-                # Check event type - only process push events for now
-                if event.event_type != "push":
+
+                # Check event type - process push and merge_request events
+                if event.event_type not in ["push", "merge_request"]:
                     logger.info(f"Skipping event {event_id} with type {event.event_type}")
                     repo.mark_event_as_processed(event_id)
                     return True
-                
+
                 # Get unprocessed commits
                 commits = repo.get_unprocessed_commits_for_event(event_id)
                 logger.info(f"Found {len(commits)} commits for event {event_id}")
@@ -149,6 +149,7 @@ class EventProcessor:
                                 try:
                                     from app.jira_integration.jira_client import JiraClient
                                     from app.jira_integration.config import JiraConfig
+                                    from app.jira_integration.jira_transitions import JiraTransitionService
                                     
                                     jira_config = JiraConfig(
                                         url=settings.JIRA_URL,
@@ -156,18 +157,47 @@ class EventProcessor:
                                         token=settings.JIRA_TOKEN
                                     )
                                     jira_client = JiraClient(jira_config)
+                                    transition_service = JiraTransitionService(jira_client)
+                                    
+                                    # Extract MR state and URL from event payload
+                                    mr_state = self._extract_mr_state_from_event(event_id)
+                                    mr_url = self._extract_mr_url_from_event(event_id)
+                                    mr_title = summary_input.get("merge_request_title", "")
+                                    
+                                    # Transition issue based on MR state
+                                    if mr_state:
+                                        logger.info(f"MR state: {mr_state}, attempting transition for {jira_issue}")
+                                        transition_service.transition_issue(
+                                            jira_issue,
+                                            mr_state,
+                                            mr_url=mr_url,
+                                            mr_title=mr_title
+                                        )
                                     
                                     # Format comment for Jira
                                     jira_comment = self._format_jira_comment(summary_input, ai_summary_text)
                                     
+                                    # Extract reviewers from event payload if available
+                                    reviewers = self._extract_reviewers_from_event(event_id)
+                                    
+                                    # Add reviewer mentions
+                                    if reviewers:
+                                        reviewer_mentions = []
+                                        for r in reviewers:
+                                            if isinstance(r, dict) and r.get('username'):
+                                                reviewer_mentions.append(f"[~{r.get('username')}]")
+                                        if reviewer_mentions:
+                                            jira_comment += "\n\n" + " ".join(reviewer_mentions)
+                                    
                                     # Post comment
                                     result = jira_client.add_comment(jira_issue, jira_comment)
                                     if result:
-                                        logger.info(f"Posted comment to Jira issue {jira_issue}")
+                                        logger.info(f"✅ Posted comment to Jira issue {jira_issue}")
                                     else:
-                                        logger.warning(f"Failed to post comment to Jira issue {jira_issue}")
+                                        logger.warning(f"⚠️ Failed to post comment to Jira issue {jira_issue}")
                                 except Exception as e:
-                                    logger.error(f"Error posting to Jira: {e}")
+                                    logger.error(f"❌ Error posting to Jira: {e}")
+                                    logger.exception("Stack trace:")
                         else:
                             logger.warning(f"AI summary generation returned None for {jira_issue}")
 
@@ -255,6 +285,110 @@ class EventProcessor:
             jira_client.auto_transition_to_in_progress_then_review(issue_key)
         except Exception as e:
             logger.error("Error applying auto transition on %s: %s", issue_key, e)
+
+    def _extract_mr_state_from_event(self, event_id: int) -> Optional[str]:
+        """
+        Extract Merge Request state from event payload.
+        
+        Args:
+            event_id: Event database ID
+            
+        Returns:
+            MR state (opened, approved, merged, closed) or None
+        """
+        try:
+            from app.shared.database import session_scope
+            from app.shared.models import Event
+            import json
+            
+            with session_scope() as session:
+                event = session.query(Event).filter(Event.id == event_id).first()
+                if not event:
+                    return None
+                
+                payload = json.loads(event.payload_json)
+                object_attributes = payload.get("object_attributes", {})
+                
+                # Map GitLab action to our states
+                action = object_attributes.get("action", "")
+                state = object_attributes.get("state", "")
+                
+                # Priority: state > action
+                if state:
+                    return state
+                if action:
+                    return action
+                
+                return None
+                
+        except Exception as e:
+            logger.debug(f"Failed to extract MR state: {e}")
+            return None
+
+    def _extract_mr_url_from_event(self, event_id: int) -> Optional[str]:
+        """
+        Extract Merge Request URL from event payload.
+        
+        Args:
+            event_id: Event database ID
+            
+        Returns:
+            MR URL or None
+        """
+        try:
+            from app.shared.database import session_scope
+            from app.shared.models import Event
+            import json
+            
+            with session_scope() as session:
+                event = session.query(Event).filter(Event.id == event_id).first()
+                if not event:
+                    return None
+                
+                payload = json.loads(event.payload_json)
+                object_attributes = payload.get("object_attributes", {})
+                
+                return object_attributes.get("url")
+                
+        except Exception as e:
+            logger.debug(f"Failed to extract MR URL: {e}")
+            return None
+
+    def _extract_reviewers_from_event(self, event_id: int) -> list:
+        """
+        Extract reviewers from event payload.
+        
+        Args:
+            event_id: Event database ID
+            
+        Returns:
+            List of reviewer dicts with username field
+        """
+        try:
+            from app.shared.database import session_scope
+            from app.shared.models import Event
+            import json
+            
+            with session_scope() as session:
+                event = session.query(Event).filter(Event.id == event_id).first()
+                if not event:
+                    return []
+                
+                payload = json.loads(event.payload_json)
+                
+                # Check for MR reviewers
+                object_attributes = payload.get("object_attributes", {})
+                reviewers = object_attributes.get("reviewers", [])
+                
+                if reviewers:
+                    logger.info(f"Found {len(reviewers)} reviewers for event {event_id}")
+                    return reviewers
+                
+                return []
+                
+        except Exception as e:
+            logger.debug(f"Failed to extract reviewers: {e}")
+            return []
 
     def _filter_truly_unprocessed(
         self,

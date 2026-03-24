@@ -191,7 +191,11 @@ class JiraClient:
         existing_comments = self._request("GET", f"issue/{issue_key}/comment")
         if existing_comments and "comments" in existing_comments:
             for comment in existing_comments["comments"]:
-                if comment.get("body", {}).get("text") == text:
+                # API v2 returns body as string, not dict
+                existing_body = comment.get("body", "")
+                if isinstance(existing_body, dict):
+                    existing_body = existing_body.get("text", "")
+                if existing_body == text:
                     logger.info("Duplicate comment found for %s, skipping", issue_key)
                     return None
 

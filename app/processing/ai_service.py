@@ -137,7 +137,7 @@ class AnthropicClient(AIClient):
             
             payload = {
                 "model": self.model,
-                "max_tokens": 500,
+                "max_tokens": 4500,
                 "system": system_prompt or "You are a helpful assistant.",
                 "messages": [
                     {"role": "user", "content": prompt}
@@ -166,6 +166,7 @@ class OllamaClient(AIClient):
     def __init__(self, model: str = "llama3.2", base_url: str = "http://localhost:11434"):
         self.model = model
         self.base_url = base_url
+        self.timeout = 300
     
     def generate(self, prompt: str, system_prompt: str = "") -> Optional[str]:
         try:
@@ -180,8 +181,9 @@ class OllamaClient(AIClient):
                 "prompt": full_prompt,
                 "stream": False,
                 "options": {
-                    "num_predict": 500,
-                    "temperature": 0.7
+                    "num_predict": 300,
+                    "temperature": 0.3,
+                    "top_p": 0.8
                 }
             }
             
@@ -189,7 +191,7 @@ class OllamaClient(AIClient):
                 f"{self.base_url}/api/generate",
                 headers=headers,
                 json=payload,
-                timeout=60
+                timeout=self.timeout
             )
             response.raise_for_status()
             
