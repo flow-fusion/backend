@@ -172,7 +172,7 @@ class JiraClient:
         logger.info("Fetching Jira issue: %s", issue_key)
         return self._request("GET", f"issue/{issue_key}")
 
-    def add_comment(self, issue_key: str, text: str) -> Optional[dict[str, Any]]:
+    def add_comment(self, issue_key: str, text: str, reviewers: Optional[list] = None) -> Optional[dict[str, Any]]:
         """
         Add comment to Jira issue.
 
@@ -181,17 +181,22 @@ class JiraClient:
         Args:
             issue_key: Jira issue key (e.g., "PROJ-123").
             text: Comment text.
+            reviewers: Optional list of reviewer usernames to mention.
 
         Returns:
             Created comment data or None if duplicate exists.
         """
         logger.info("Adding comment to Jira issue: %s", issue_key)
 
+        # Format comment with reviewer mentions if provided
+        formatted_text = self._format_comment_with_mentions(text, reviewers)
+
         # Check for duplicate comment (idempotency)
         existing_comments = self._request("GET", f"issue/{issue_key}/comment")
         if existing_comments and "comments" in existing_comments:
             for comment in existing_comments["comments"]:
-                if comment.get("body", {}).get("text") == text:
+                existing_body = comment.get("body", "")
+                if text.strip() in existing_body or existing_body.strip() in text.strip():
                     logger.info("Duplicate comment found for %s, skipping", issue_key)
                     return None
 
@@ -200,7 +205,7 @@ class JiraClient:
         result = self._request(
             "POST",
             f"issue/{issue_key}/comment",
-            json={"body": text},
+            json={"body": formatted_text},
         )
 
         if result:
@@ -208,6 +213,33 @@ class JiraClient:
             logger.info("Added comment %s to Jira issue: %s", comment_id, issue_key)
 
         return result
+
+    def _format_comment_with_mentions(self, text: str, reviewers: Optional[list]) -> str:
+        """
+        Format comment with Jira user mentions.
+        
+        Args:
+            text: Original comment text
+            reviewers: List of reviewer dicts with 'username' field
+            
+        Returns:
+            Formatted text with [~username] mentions
+        """
+        if not reviewers:
+            return text
+        
+        # Add reviewer mentions at the end
+        mentions = []
+        for reviewer in reviewers:
+            username = reviewer.get("username", "")
+            if username:
+                # Jira mentions format: [~username]
+                mentions.append(f"[~{username}]")
+        
+        if mentions:
+            text += "\n\n" + " ".join(mentions)
+        
+        return text
 
     def get_transitions(self, issue_key: str) -> list[dict[str, Any]]:
         """

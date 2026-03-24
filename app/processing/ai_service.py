@@ -162,40 +162,52 @@ class AnthropicClient(AIClient):
 
 class OllamaClient(AIClient):
     """Local Ollama LLM client (free, runs locally)."""
-    
+
     def __init__(self, model: str = "llama3.2", base_url: str = "http://localhost:11434"):
         self.model = model
         self.base_url = base_url
-    
+        self.timeout = 300  # 5 minutes for long responses
+
     def generate(self, prompt: str, system_prompt: str = "") -> Optional[str]:
         try:
             import requests
-            
+
             headers = {"Content-Type": "application/json"}
-            
+
             full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
-            
+
             payload = {
                 "model": self.model,
                 "prompt": full_prompt,
                 "stream": False,
                 "options": {
-                    "num_predict": 500,
-                    "temperature": 0.7
+                    "num_predict": 500,  # Reasonable limit
+                    "temperature": 0.5  # Less creative, more accurate
                 }
             }
-            
+
+            logger.info(f"Sending request to Ollama (timeout: {self.timeout}s)...")
             response = requests.post(
                 f"{self.base_url}/api/generate",
                 headers=headers,
                 json=payload,
-                timeout=60
+                timeout=self.timeout
             )
             response.raise_for_status()
-            
+
             result = response.json()
-            return result.get("response", "")
+            response_text = result.get("response", "")
             
+            if response_text:
+                logger.info(f"Ollama response: {len(response_text)} chars")
+            else:
+                logger.warning("Ollama returned empty response")
+            
+            return response_text
+
+        except requests.Timeout:
+            logger.error(f"Ollama request timed out after {self.timeout}s")
+            return None
         except Exception as e:
             logger.error(f"Ollama API error: {e}")
             return None
@@ -322,13 +334,20 @@ class AIService:
         
         logger.info(f"Generating AI summary for Jira issue {summary_input.get('jira_issue', 'Unknown')}")
         
-        summary = self.client.generate(prompt, self.system_prompt)
-        
-        if summary:
-            logger.info(f"AI summary generated: {len(summary)} chars")
-            logger.debug(f"Summary preview: {summary[:200]}...")
-        
-        return summary
+        try:
+            summary = self.client.generate(prompt, self.system_prompt)
+            
+            if summary and len(summary.strip()) > 10:
+                logger.info(f"AI summary generated: {len(summary)} chars")
+                logger.debug(f"Summary preview: {summary[:200]}...")
+                return summary
+            else:
+                logger.warning(f"AI returned empty or too short summary for {summary_input.get('jira_issue')}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"AI generation failed: {e}")
+            return None
     
     def _format_prompt(self, summary_input: Dict[str, Any]) -> str:
         """Format summary input as AI prompt."""

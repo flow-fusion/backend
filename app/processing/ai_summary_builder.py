@@ -28,6 +28,7 @@ class AISummaryBuilder:
         jira_issue: str,
         commits: List[Commit],
         git_context: Optional[GitContext] = None,
+        mr_description: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Build structured input for AI summarization.
@@ -119,7 +120,8 @@ class AISummaryBuilder:
             summary_input["changed_files"] = []
             summary_input["diff_summary"] = []
             summary_input["merge_request_title"] = ""
-            summary_input["merge_request_description"] = ""
+            # Use mr_description if provided (from event payload)
+            summary_input["merge_request_description"] = mr_description or ""
             summary_input["merge_request_author"] = ""
 
         logger.info(
@@ -324,63 +326,64 @@ class AISummaryBuilder:
         diff_summary = summary_input.get("diff_summary", [])
         merge_request_title = summary_input.get("merge_request_title", "")
         merge_request_description = summary_input.get("merge_request_description", "")
+        reviewers = summary_input.get("reviewers", [])
 
-        # Build the prompt
+        # Build the prompt in Russian
         prompt_parts = [
-            f"Generate a progress update for Jira issue {jira_issue}.",
-            "",
-            "Summary of work completed:",
+            f"Сгенерируй краткий прогресс-апдейт для Jira задачи {jira_issue}.",
             "",
         ]
 
-        # Add merge request info if available
+        # Add MR description if available
+        if merge_request_description:
+            prompt_parts.append("📋 **Описание Merge Request:**")
+            prompt_parts.append(merge_request_description[:500])  # Truncate
+            prompt_parts.append("")
+
+        # Add commit messages
+        if commit_messages:
+            prompt_parts.append("📝 **Коммиты (список сообщений):**")
+            for msg in commit_messages:
+                prompt_parts.append(f"- {msg}")
+            prompt_parts.append("")
+
+        # Add changed files
+        if changed_files:
+            prompt_parts.append("📁 **Изменённые файлы:**")
+            for f in changed_files[:15]:
+                prompt_parts.append(f"- {f}")
+            prompt_parts.append("")
+
+        # Add diff summary
+        if diff_summary:
+            prompt_parts.append("📊 **Изменения (строки кода):**")
+            for d in diff_summary[:15]:
+                prompt_parts.append(f"- {d}")
+            prompt_parts.append("")
+
+        # Add MR title
         if merge_request_title:
-            prompt_parts.append(f"Merge Request: {merge_request_title}")
-            if merge_request_description:
-                prompt_parts.append(f"Description: {merge_request_description}")
+            prompt_parts.append(f"🔀 **Merge Request:** {merge_request_title}")
             prompt_parts.append("")
 
-        if commit_count > 0:
-            prompt_parts.append(f"Number of commits: {commit_count}")
+        # Add reviewer username (for mention)
+        if reviewers:
+            reviewer_usernames = [r.get("username", "") for r in reviewers if r.get("username")]
+            if reviewer_usernames:
+                prompt_parts.append(f"👥 **Ревьювер:** {', '.join(reviewer_usernames)}")
+                prompt_parts.append("")
 
-            if authors:
-                prompt_parts.append(f"Authors: {', '.join(authors)}")
-
-            if time_range.get("start") and time_range.get("end"):
-                prompt_parts.append(
-                    f"Time range: {time_range['start']} to {time_range['end']}"
-                )
-
+        # Add time range
+        if time_range.get("start") and time_range.get("end"):
+            prompt_parts.append(f"⏰ **Период:** {time_range['start'][:10]} — {time_range['end'][:10]}")
             prompt_parts.append("")
-            prompt_parts.append("Commit messages:")
-            for i, msg in enumerate(commit_messages, 1):
-                prompt_parts.append(f"  {i}. {msg}")
 
-            # Add changed files if available
-            if changed_files:
-                prompt_parts.append("")
-                prompt_parts.append("Changed files:")
-                for filename in changed_files[:20]:  # Limit to 20 files
-                    prompt_parts.append(f"  - {filename}")
-                if len(changed_files) > 20:
-                    prompt_parts.append(f"  ... and {len(changed_files) - 20} more")
-
-            # Add diff summary if available
-            if diff_summary:
-                prompt_parts.append("")
-                prompt_parts.append("Code changes summary:")
-                for line in diff_summary[:15]:  # Limit to 15 lines
-                    prompt_parts.append(f"  {line}")
-                if len(diff_summary) > 15:
-                    prompt_parts.append(f"  ... and {len(diff_summary) - 15} more files")
-        else:
-            prompt_parts.append("No commits to summarize.")
-
-        prompt_parts.append("")
-        prompt_parts.append(
-            "Please generate a concise, professional summary of the work completed. "
-            "Focus on what was accomplished and any notable changes. "
-            "Reference specific files and changes where relevant."
-        )
+        # Requirements
+        prompt_parts.append("Требования к ответу:")
+        prompt_parts.append("- Пиши ТОЛЬКО на русском")
+        prompt_parts.append("- 2-4 предложения")
+        prompt_parts.append("- Деловой стиль")
+        prompt_parts.append("- Без \"Авторы:\", \"Author:\"")
+        prompt_parts.append("- Без упоминания других Jira задач")
 
         return "\n".join(prompt_parts)
