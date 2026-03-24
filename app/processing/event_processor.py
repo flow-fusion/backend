@@ -13,6 +13,7 @@ from app.processing.git_context_service import GitContextService, GitContext
 from app.processing.ai_service import AIService
 from app.shared.processing_repository import ProcessingRepository
 from app.shared.models import Event
+from app.jira_integration.jira_client import find_transition_id
 
 logger = get_logger("event_processor")
 
@@ -237,6 +238,23 @@ class EventProcessor:
             comment_parts.append(f"_Авторы: {', '.join(authors)}_")
         
         return "\n".join(comment_parts)
+
+    def _apply_jira_auto_transition(self, jira_client, issue_key: str) -> None:
+        """
+        Apply configured Jira automatic transition after posting a comment.
+
+        Behavior:
+        1) Переводит в "в работе" через интерпретацию текущих доступных переходов.
+        2) Если задача стала "в работе", пытается перевести на "на ревью".
+        """
+        settings = get_settings()
+        if not settings.JIRA_AUTO_TRANSITION:
+            return
+
+        try:
+            jira_client.auto_transition_to_in_progress_then_review(issue_key)
+        except Exception as e:
+            logger.error("Error applying auto transition on %s: %s", issue_key, e)
 
     def _filter_truly_unprocessed(
         self,

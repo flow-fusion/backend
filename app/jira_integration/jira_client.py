@@ -277,6 +277,126 @@ class JiraClient:
             transition_id,
         )
 
+    @staticmethod
+    def _normalize_status(status: str) -> str:
+        return (status or "").strip().lower()
+
+    @staticmethod
+    def _is_in_progress_status(status: str) -> bool:
+        norm = JiraClient._normalize_status(status)
+        return norm in {
+            "in progress", "в работе", "выполняется", "doing", "in progress",
+            "in development", "development", "started",
+        }
+
+    @staticmethod
+    def _is_review_status(status: str) -> bool:
+        norm = JiraClient._normalize_status(status)
+        return norm in {
+            "review", "на ревью", "code review", "in review", "peer review",
+        }
+
+    @staticmethod
+    def _status_order_index(status: str) -> int:
+        norm = JiraClient._normalize_status(status)
+        order = [
+            "создано", "открыто", "open", "to do", "backlog", "планирование", "принято",
+            "спланировано", "ждёт исполнителя", "waiting for developer", "waiting",
+            "in progress", "в работе", "разработка", "doing", "in development",
+            "review", "на ревью", "code review", "in review", "peer review",
+            "done", "готово", "закрыто", "решено",
+        ]
+        try:
+            return order.index(norm)
+        except ValueError:
+            return len(order) + 100
+
+    def _choose_transition_towards_in_progress(self, current_status: str, transitions: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+        norm_current = JiraClient._normalize_status(current_status)
+
+        # If already in progress, nothing to do.
+        if JiraClient._is_in_progress_status(norm_current):
+            return None
+
+        # direct path first
+        for transition in transitions:
+            to_status = transition.get("to", {}).get("name", "")
+            if JiraClient._is_in_progress_status(to_status):
+                return transition
+
+        # choose one transition that is the closest step towards in_progress in our model order
+        curr_idx = JiraClient._status_order_index(norm_current)
+        best_transition = None
+        best_index = 999
+
+        for transition in transitions:
+            to_status = transition.get("to", {}).get("name", "")
+            to_idx = JiraClient._status_order_index(to_status)
+
+            if to_idx <= curr_idx:
+                continue
+
+            if to_idx < best_index:
+                best_index = to_idx
+                best_transition = transition
+
+        # fallback: if nothing found using order, choose first available transition
+        return best_transition or (transitions[0] if transitions else None)
+
+    def auto_transition_to_in_progress(self, issue_key: str, max_steps: int = 10) -> None:
+        for step in range(max_steps):
+            issue = self.get_issue(issue_key)
+            current_status = issue.get("fields", {}).get("status", {}).get("name", "")
+            logger.info("Jira issue %s current status '%s' (step %d)", issue_key, current_status, step + 1)
+
+            if JiraClient._is_in_progress_status(current_status):
+                logger.info("Issue %s is already in progress/status '%s', stop forward transition", issue_key, current_status)
+                return
+
+            transitions = self.get_transitions(issue_key)
+            candidate = self._choose_transition_towards_in_progress(current_status, transitions)
+
+            if not candidate:
+                logger.warning("No candidate transition found for issue %s from '%s'", issue_key, current_status)
+                return
+
+            target = candidate.get("to", {}).get("name", "unknown")
+            logger.info("Applying transition %s => '%s' for issue %s", candidate.get("id"), target, issue_key)
+            self.transition_issue(issue_key, candidate.get("id"))
+
+            # If we reached in progress by this transition, stop early
+            if JiraClient._is_in_progress_status(target):
+                logger.info("Issue %s became in progress '%s'", issue_key, target)
+                return
+
+        logger.warning("Reached max in-progress transition steps (%d) for issue %s", max_steps, issue_key)
+
+    def auto_transition_to_review(self, issue_key: str) -> None:
+        issue = self.get_issue(issue_key)
+        current_status = issue.get("fields", {}).get("status", {}).get("name", "")
+
+        if not JiraClient._is_in_progress_status(current_status):
+            logger.info("Issue %s current status '%s' is not in-progress; skipping review transition", issue_key, current_status)
+            return
+
+        transitions = self.get_transitions(issue_key)
+        for transition in transitions:
+            to_status = transition.get("to", {}).get("name", "")
+            if JiraClient._is_review_status(to_status):
+                logger.info("Applying review transition %s => '%s' for issue %s", transition.get("id"), to_status, issue_key)
+                self.transition_issue(issue_key, transition.get("id"))
+                return
+
+        logger.info("No review transition available for issue %s from status '%s'", issue_key, current_status)
+
+    def auto_transition_to_in_progress_then_review(self, issue_key: str) -> None:
+        self.auto_transition_to_in_progress(issue_key)
+        issue = self.get_issue(issue_key)
+        current_status = issue.get("fields", {}).get("status", {}).get("name", "")
+
+        if JiraClient._is_in_progress_status(current_status):
+            self.auto_transition_to_review(issue_key)
+
     def add_worklog(
         self,
         issue_key: str,
